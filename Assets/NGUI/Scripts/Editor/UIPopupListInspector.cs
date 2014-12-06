@@ -1,6 +1,6 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2013 Tasharen Entertainment
+// Copyright © 2011-2014 Tasharen Entertainment
 //----------------------------------------------
 
 #if !UNITY_3_5 && !UNITY_FLASH
@@ -31,6 +31,23 @@ public class UIPopupListInspector : UIWidgetContainerEditor
 	{
 		SerializedProperty bit = serializedObject.FindProperty("bitmapFont");
 		mType = (bit.objectReferenceValue != null) ? FontType.Bitmap : FontType.Dynamic;
+		mList = target as UIPopupList;
+
+		if (mList.ambigiousFont == null)
+		{
+			mList.ambigiousFont = NGUISettings.ambigiousFont;
+			mList.fontSize = NGUISettings.fontSize;
+			mList.fontStyle = NGUISettings.fontStyle;
+			EditorUtility.SetDirty(mList);
+		}
+
+		if (mList.atlas == null)
+		{
+			mList.atlas = NGUISettings.atlas;
+			mList.backgroundSprite = NGUISettings.selectedSprite;
+			mList.highlightSprite = NGUISettings.selectedSprite;
+			EditorUtility.SetDirty(mList);
+		}
 	}
 
 	void RegisterUndo ()
@@ -42,6 +59,7 @@ public class UIPopupListInspector : UIWidgetContainerEditor
 	{
 		RegisterUndo();
 		mList.atlas = obj as UIAtlas;
+		NGUISettings.atlas = mList.atlas;
 	}
 
 	void OnBackground (string spriteName)
@@ -64,6 +82,7 @@ public class UIPopupListInspector : UIWidgetContainerEditor
 		SerializedProperty sp = serializedObject.FindProperty("bitmapFont");
 		sp.objectReferenceValue = obj;
 		serializedObject.ApplyModifiedProperties();
+		NGUISettings.ambigiousFont = obj;
 	}
 
 	void OnDynamicFont (Object obj)
@@ -72,69 +91,55 @@ public class UIPopupListInspector : UIWidgetContainerEditor
 		SerializedProperty sp = serializedObject.FindProperty("trueTypeFont");
 		sp.objectReferenceValue = obj;
 		serializedObject.ApplyModifiedProperties();
+		NGUISettings.ambigiousFont = obj;
 	}
 
 	public override void OnInspectorGUI ()
 	{
 		serializedObject.Update();
 		NGUIEditorTools.SetLabelWidth(80f);
-		mList = target as UIPopupList;
 
-		UILabel lbl = EditorGUILayout.ObjectField("Text Label", mList.textLabel, typeof(UILabel), true) as UILabel;
+		GUILayout.BeginHorizontal();
+		GUILayout.Space(6f);
+		GUILayout.Label("Options");
+		GUILayout.EndHorizontal();
 
-		if (mList.textLabel != lbl)
+		string text = "";
+		foreach (string s in mList.items) text += s + "\n";
+
+		GUILayout.Space(-14f);
+		GUILayout.BeginHorizontal();
+		GUILayout.Space(84f);
+		string modified = EditorGUILayout.TextArea(text, GUILayout.Height(100f));
+		GUILayout.EndHorizontal();
+
+		if (modified != text)
 		{
 			RegisterUndo();
-			mList.textLabel = lbl;
-			if (lbl != null) lbl.text = mList.value;
-		}
+			string[] split = modified.Split(new char[] { '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
+			mList.items.Clear();
+			foreach (string s in split) mList.items.Add(s);
 
-		if (mList.textLabel == null)
-		{
-			EditorGUILayout.HelpBox("This popup list has no label to update, so it will behave like a menu.", MessageType.Info);
-		}
-
-		if (mList.atlas != null)
-		{
-			GUILayout.BeginHorizontal();
-			GUILayout.Space(6f);
-			GUILayout.Label("Options");
-			GUILayout.EndHorizontal();
-
-			string text = "";
-			foreach (string s in mList.items) text += s + "\n";
-
-			GUILayout.Space(-14f);
-			GUILayout.BeginHorizontal();
-			GUILayout.Space(84f);
-			string modified = EditorGUILayout.TextArea(text, GUILayout.Height(100f));
-			GUILayout.EndHorizontal();
-
-			if (modified != text)
+			if (string.IsNullOrEmpty(mList.value) || !mList.items.Contains(mList.value))
 			{
-				RegisterUndo();
-				string[] split = modified.Split(new char[] { '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
-				mList.items.Clear();
-				foreach (string s in split) mList.items.Add(s);
-
-				if (string.IsNullOrEmpty(mList.value) || !mList.items.Contains(mList.value))
-				{
-					mList.value = mList.items.Count > 0 ? mList.items[0] : "";
-				}
+				mList.value = mList.items.Count > 0 ? mList.items[0] : "";
 			}
-
-			GUI.changed = false;
-			string sel = NGUIEditorTools.DrawList("Default", mList.items.ToArray(), mList.value);
-			if (GUI.changed) serializedObject.FindProperty("mSelectedItem").stringValue = sel;
-
-			NGUIEditorTools.DrawProperty("Position", serializedObject, "position");
-			NGUIEditorTools.DrawProperty("Localized", serializedObject, "isLocalized");
-
-			DrawAtlas();
-			DrawFont();
-
-			NGUIEditorTools.DrawEvents("On Value Change", mList, mList.onChange);
 		}
+
+		GUI.changed = false;
+		string sel = NGUIEditorTools.DrawList("Default", mList.items.ToArray(), mList.value);
+		if (GUI.changed) serializedObject.FindProperty("mSelectedItem").stringValue = sel;
+
+		NGUIEditorTools.DrawProperty("Position", serializedObject, "position");
+		NGUIEditorTools.DrawProperty("Alignment", serializedObject, "alignment");
+		NGUIEditorTools.DrawProperty("Open on", serializedObject, "openOn");
+		NGUIEditorTools.DrawProperty("Localized", serializedObject, "isLocalized");
+
+		DrawAtlas();
+		DrawFont();
+
+		NGUIEditorTools.DrawEvents("On Value Change", mList, mList.onChange);
+
 		serializedObject.ApplyModifiedProperties();
 	}
 
@@ -182,7 +187,7 @@ public class UIPopupListInspector : UIWidgetContainerEditor
 					}
 					else
 					{
-						ComponentSelector.Show<Font>(OnDynamicFont);
+						ComponentSelector.Show<Font>(OnDynamicFont, new string[] { ".ttf", ".otf"});
 					}
 				}
 
@@ -225,11 +230,12 @@ public class UIPopupListInspector : UIWidgetContainerEditor
 					EditorGUI.BeginDisabledGroup(ttf.hasMultipleDifferentValues);
 					NGUIEditorTools.DrawProperty("Font Size", serializedObject, "fontSize", GUILayout.Width(142f));
 					NGUIEditorTools.DrawProperty("", serializedObject, "fontStyle", GUILayout.MinWidth(40f));
-					GUILayout.Space(18f);
+					NGUIEditorTools.DrawPadding();
 					EditorGUI.EndDisabledGroup();
 				}
 				GUILayout.EndHorizontal();
 			}
+			else NGUIEditorTools.DrawProperty("Font Size", serializedObject, "fontSize", GUILayout.Width(142f));
 
 			NGUIEditorTools.DrawProperty("Text Color", serializedObject, "textColor");
 
@@ -239,7 +245,7 @@ public class UIPopupListInspector : UIWidgetContainerEditor
 			NGUIEditorTools.SetLabelWidth(14f);
 			NGUIEditorTools.DrawProperty("X", serializedObject, "padding.x", GUILayout.MinWidth(30f));
 			NGUIEditorTools.DrawProperty("Y", serializedObject, "padding.y", GUILayout.MinWidth(30f));
-			GUILayout.Space(18f);
+			NGUIEditorTools.DrawPadding();
 			NGUIEditorTools.SetLabelWidth(80f);
 			GUILayout.EndHorizontal();
 

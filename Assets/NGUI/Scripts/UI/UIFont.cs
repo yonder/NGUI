@@ -1,12 +1,12 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2013 Tasharen Entertainment
+// Copyright © 2011-2014 Tasharen Entertainment
 //----------------------------------------------
 
 // Dynamic font support contributed by the NGUI community members:
 // Unisip, zh4ox, Mudwiz, Nicki, DarkMagicCK.
 
-#if !UNITY_3_5 && !UNITY_FLASH
+#if !UNITY_3_5
 #define DYNAMIC_FONT
 #endif
 
@@ -19,24 +19,14 @@ using System.Text;
 /// </summary>
 
 [ExecuteInEditMode]
-[AddComponentMenu("NGUI/UI/Font")]
+[AddComponentMenu("NGUI/UI/NGUI Font")]
 public class UIFont : MonoBehaviour
 {
-	public enum SymbolStyle
-	{
-		None,
-		Uncolored,
-		Colored,
-	}
-
 	[HideInInspector][SerializeField] Material mMat;
 	[HideInInspector][SerializeField] Rect mUVRect = new Rect(0f, 0f, 1f, 1f);
 	[HideInInspector][SerializeField] BMFont mFont = new BMFont();
-	[HideInInspector][SerializeField] int mSpacingX = 0;
-	[HideInInspector][SerializeField] int mSpacingY = 0;
 	[HideInInspector][SerializeField] UIAtlas mAtlas;
 	[HideInInspector][SerializeField] UIFont mReplacement;
-	[HideInInspector][SerializeField] float mPixelSize = 1f;
 
 	// List of symbols, such as emoticons like ":)", ":(", etc
 	[HideInInspector][SerializeField] List<BMSymbol> mSymbols = new List<BMSymbol>();
@@ -47,36 +37,67 @@ public class UIFont : MonoBehaviour
 	[HideInInspector][SerializeField] FontStyle mDynamicFontStyle = FontStyle.Normal;
 
 	// Cached value
+	[System.NonSerialized]
 	UISpriteData mSprite = null;
 	int mPMA = -1;
-	bool mSpriteSet = false;
-
-	// I'd use a Stack here, but then Flash export wouldn't work as it doesn't support it
-	static BetterList<Color> mColors = new BetterList<Color>();
+	int mPacked = -1;
 
 	/// <summary>
 	/// Access to the BMFont class directly.
 	/// </summary>
 
-	public BMFont bmFont { get { return (mReplacement != null) ? mReplacement.bmFont : mFont; } }
+	public BMFont bmFont
+	{
+		get
+		{
+			return (mReplacement != null) ? mReplacement.bmFont : mFont;
+		}
+		set
+		{
+			if (mReplacement != null) mReplacement.bmFont = value;
+			else mFont = value;
+		}
+	}
 
 	/// <summary>
 	/// Original width of the font's texture in pixels.
 	/// </summary>
 
-	public int texWidth { get { return (mReplacement != null) ? mReplacement.texWidth : ((mFont != null) ? mFont.texWidth : 1); } }
+	public int texWidth
+	{
+		get
+		{
+			return (mReplacement != null) ? mReplacement.texWidth : ((mFont != null) ? mFont.texWidth : 1);
+		}
+		set
+		{
+			if (mReplacement != null) mReplacement.texWidth = value;
+			else if (mFont != null) mFont.texWidth = value;
+		}
+	}
 
 	/// <summary>
 	/// Original height of the font's texture in pixels.
 	/// </summary>
 
-	public int texHeight { get { return (mReplacement != null) ? mReplacement.texHeight : ((mFont != null) ? mFont.texHeight : 1); } }
+	public int texHeight
+	{
+		get
+		{
+			return (mReplacement != null) ? mReplacement.texHeight : ((mFont != null) ? mFont.texHeight : 1);
+		}
+		set
+		{
+			if (mReplacement != null) mReplacement.texHeight = value;
+			else if (mFont != null) mFont.texHeight = value;
+		}
+	}
 
 	/// <summary>
 	/// Whether the font has any symbols defined.
 	/// </summary>
 
-	public bool hasSymbols { get { return (mReplacement != null) ? mReplacement.hasSymbols : mSymbols.Count != 0; } }
+	public bool hasSymbols { get { return (mReplacement != null) ? mReplacement.hasSymbols : (mSymbols != null && mSymbols.Count != 0); } }
 
 	/// <summary>
 	/// List of symbols within the font.
@@ -158,51 +179,21 @@ public class UIFont : MonoBehaviour
 	}
 
 	/// <summary>
-	/// Pixel size is a multiplier applied to label dimensions when performing MakePixelPerfect() pixel correction.
-	/// Most obvious use would be on retina screen displays. The resolution doubles, but with UIRoot staying the same
-	/// for layout purposes, you can still get extra sharpness by switching to an HD font that has pixel size set to 0.5.
+	/// Whether the font is using a premultiplied alpha material.
 	/// </summary>
 
-	public float pixelSize
-	{
-		get
-		{
-			if (mReplacement != null) return mReplacement.pixelSize;
-			if (mAtlas != null) return mAtlas.pixelSize;
-			return mPixelSize;
-		}
-		set
-		{
-			if (mReplacement != null)
-			{
-				mReplacement.pixelSize = value;
-			}
-			else if (mAtlas != null)
-			{
-				mAtlas.pixelSize = value;
-			}
-			else
-			{
-				float val = Mathf.Clamp(value, 0.25f, 4f);
-
-				if (mPixelSize != val)
-				{
-					mPixelSize = val;
-					MarkAsChanged();
-				}
-			}
-		}
-	}
+	[System.Obsolete("Use UIFont.premultipliedAlphaShader instead")]
+	public bool premultipliedAlpha { get { return premultipliedAlphaShader; } }
 
 	/// <summary>
 	/// Whether the font is using a premultiplied alpha material.
 	/// </summary>
 
-	public bool premultipliedAlpha
+	public bool premultipliedAlphaShader
 	{
 		get
 		{
-			if (mReplacement != null) return mReplacement.premultipliedAlpha;
+			if (mReplacement != null) return mReplacement.premultipliedAlphaShader;
 
 			if (mAtlas != null) return mAtlas.premultipliedAlpha;
 
@@ -212,6 +203,26 @@ public class UIFont : MonoBehaviour
 				mPMA = (mat != null && mat.shader != null && mat.shader.name.Contains("Premultiplied")) ? 1 : 0;
 			}
 			return (mPMA == 1);
+		}
+	}
+
+	/// <summary>
+	/// Whether the font is a packed font.
+	/// </summary>
+
+	public bool packedFontShader
+	{
+		get
+		{
+			if (mReplacement != null) return mReplacement.packedFontShader;
+			if (mAtlas != null) return false;
+
+			if (mPacked == -1)
+			{
+				Material mat = material;
+				mPacked = (mat != null && mat.shader != null && mat.shader.name.Contains("Packed")) ? 1 : 0;
+			}
+			return (mPacked == 1);
 		}
 	}
 
@@ -238,41 +249,7 @@ public class UIFont : MonoBehaviour
 		get
 		{
 			if (mReplacement != null) return mReplacement.uvRect;
-
-			if (mAtlas != null && (mSprite == null && sprite != null))
-			{
-				Texture tex = mAtlas.texture;
-
-				if (tex != null)
-				{
-					mUVRect = new Rect(
-						mSprite.x - mSprite.paddingLeft,
-						mSprite.y - mSprite.paddingTop,
-						mSprite.width + mSprite.paddingLeft + mSprite.paddingRight,
-						mSprite.height + mSprite.paddingTop + mSprite.paddingBottom);
-
-					mUVRect = NGUIMath.ConvertToTexCoords(mUVRect, tex.width, tex.height);
-#if UNITY_EDITOR
-					// The font should always use the original texture size
-					if (mFont != null)
-					{
-						float tw = (float)mFont.texWidth / tex.width;
-						float th = (float)mFont.texHeight / tex.height;
-
-						if (tw != mUVRect.width || th != mUVRect.height)
-						{
-							//Debug.LogWarning("Font sprite size doesn't match the expected font texture size.\n" +
-							//	"Did you use the 'inner padding' setting on the Texture Packer? It must remain at '0'.", this);
-							mUVRect.width = tw;
-							mUVRect.height = th;
-						}
-					}
-#endif
-					// Trimmed sprite? Trim the glyphs
-					if (mSprite.hasPadding) Trim();
-				}
-			}
-			return mUVRect;
+			return (mAtlas != null && sprite != null) ? mUVRect : new Rect(0f, 0f, 1f, 1f);
 		}
 		set
 		{
@@ -313,54 +290,6 @@ public class UIFont : MonoBehaviour
 	}
 
 	/// <summary>
-	/// Horizontal spacing applies to characters. If positive, it will add extra spacing between characters. If negative, it will make them be closer together.
-	/// </summary>
-
-	public int horizontalSpacing
-	{
-		get
-		{
-			return (mReplacement != null) ? mReplacement.horizontalSpacing : mSpacingX;
-		}
-		set
-		{
-			if (mReplacement != null)
-			{
-				mReplacement.horizontalSpacing = value;
-			}
-			else if (mSpacingX != value)
-			{
-				mSpacingX = value;
-				MarkAsChanged();
-			}
-		}
-	}
-
-	/// <summary>
-	/// Vertical spacing applies to lines. If positive, it will add extra spacing between lines. If negative, it will make them be closer together.
-	/// </summary>
-
-	public int verticalSpacing
-	{
-		get
-		{
-			return (mReplacement != null) ? mReplacement.verticalSpacing : mSpacingY;
-		}
-		set
-		{
-			if (mReplacement != null)
-			{
-				mReplacement.verticalSpacing = value;
-			}
-			else if (mSpacingY != value)
-			{
-				mSpacingY = value;
-				MarkAsChanged();
-			}
-		}
-	}
-
-	/// <summary>
 	/// Whether this is a valid font.
 	/// </summary>
 
@@ -385,7 +314,9 @@ public class UIFont : MonoBehaviour
 	{
 		get
 		{
-			return (mReplacement != null) ? mReplacement.defaultSize : (isDynamic ? mDynamicFontSize : mFont.charSize);
+			if (mReplacement != null) return mReplacement.defaultSize;
+			if (isDynamic || mFont == null) return mDynamicFontSize;
+			return mFont.charSize;
 		}
 		set
 		{
@@ -404,20 +335,13 @@ public class UIFont : MonoBehaviour
 		{
 			if (mReplacement != null) return mReplacement.sprite;
 
-			if (!mSpriteSet) mSprite = null;
-
-			if (mSprite == null)
+			if (mSprite == null && mAtlas != null && !string.IsNullOrEmpty(mFont.spriteName))
 			{
-				if (mAtlas != null && !string.IsNullOrEmpty(mFont.spriteName))
-				{
-					mSprite = mAtlas.GetSprite(mFont.spriteName);
+				mSprite = mAtlas.GetSprite(mFont.spriteName);
 
-					if (mSprite == null) mSprite = mAtlas.GetSprite(name);
-
-					mSpriteSet = true;
-
-					if (mSprite == null) mFont.spriteName = null;
-				}
+				if (mSprite == null) mSprite = mAtlas.GetSprite(name);
+				if (mSprite == null) mFont.spriteName = null;
+				else UpdateUVRect();
 
 				for (int i = 0, imax = mSymbols.Count; i < imax; ++i)
 					symbols[i].MarkAsChanged();
@@ -448,6 +372,14 @@ public class UIFont : MonoBehaviour
 				if (rep != null && rep.replacement == this) rep.replacement = null;
 				if (mReplacement != null) MarkAsChanged();
 				mReplacement = rep;
+
+				if (rep != null)
+				{
+					mPMA = -1;
+					mMat = null;
+					mFont = null;
+					mDynamicFont = null;
+				}
 				MarkAsChanged();
 			}
 		}
@@ -457,7 +389,7 @@ public class UIFont : MonoBehaviour
 	/// Whether the font is dynamic.
 	/// </summary>
 
-	public bool isDynamic { get { return (mDynamicFont != null); } }
+	public bool isDynamic { get { return (mReplacement != null) ? mReplacement.isDynamic : (mDynamicFont != null); } }
 
 	/// <summary>
 	/// Get or set the dynamic font source.
@@ -548,7 +480,7 @@ public class UIFont : MonoBehaviour
 	static public bool CheckIfRelated (UIFont a, UIFont b)
 	{
 		if (a == null || b == null) return false;
-#if DYNAMIC_FONT
+#if DYNAMIC_FONT && !UNITY_FLASH
 		if (a.isDynamic && b.isDynamic && a.dynamicFont.fontNames[0] == b.dynamicFont.fontNames[0]) return true;
 #endif
 		return a == b || a.References(b) || b.References(a);
@@ -571,7 +503,7 @@ public class UIFont : MonoBehaviour
 	public void MarkAsChanged ()
 	{
 #if UNITY_EDITOR
-		UnityEditor.EditorUtility.SetDirty(gameObject);
+		NGUITools.SetDirty(gameObject);
 #endif
 		if (mReplacement != null) mReplacement.MarkAsChanged();
 
@@ -591,520 +523,46 @@ public class UIFont : MonoBehaviour
 		}
 
 		// Clear all symbols
-		for (int i = 0, imax = mSymbols.Count; i < imax; ++i)
+		for (int i = 0, imax = symbols.Count; i < imax; ++i)
 			symbols[i].MarkAsChanged();
 	}
 
 	/// <summary>
-	/// Get the printed size of the specified string. The returned value is in pixels.
+	/// Forcefully update the font's sprite reference.
 	/// </summary>
 
-	public Vector2 CalculatePrintedSize (string text, int size, bool encoding, SymbolStyle symbolStyle)
+	public void UpdateUVRect ()
 	{
-		if (mReplacement != null) return mReplacement.CalculatePrintedSize(text, size, encoding, symbolStyle);
+		if (mAtlas == null) return;
+		Texture tex = mAtlas.texture;
 
-#if DYNAMIC_FONT
-		if (isDynamic) return NGUIText.CalculatePrintedSize(text, mDynamicFont, size, mDynamicFontStyle, encoding);
-#endif
-		Vector2 v = Vector2.zero;
-
-		if (mFont != null && mFont.isValid && !string.IsNullOrEmpty(text))
+		if (tex != null)
 		{
-			if (encoding) text = NGUIText.StripSymbols(text);
+			mUVRect = new Rect(
+				mSprite.x - mSprite.paddingLeft,
+				mSprite.y - mSprite.paddingTop,
+				mSprite.width + mSprite.paddingLeft + mSprite.paddingRight,
+				mSprite.height + mSprite.paddingTop + mSprite.paddingBottom);
 
-			int length = text.Length;
-			int maxX = 0;
-			int x = 0;
-			int y = 0;
-			int prev = 0;
-			int fs = size;
-			int lineHeight = (fs + mSpacingY);
-			bool useSymbols = encoding && symbolStyle != SymbolStyle.None && hasSymbols;
-
-			for (int i = 0; i < length; ++i)
+			mUVRect = NGUIMath.ConvertToTexCoords(mUVRect, tex.width, tex.height);
+#if UNITY_EDITOR
+			// The font should always use the original texture size
+			if (mFont != null)
 			{
-				char c = text[i];
+				float tw = (float)mFont.texWidth / tex.width;
+				float th = (float)mFont.texHeight / tex.height;
 
-				// Start a new line
-				if (c == '\n')
+				if (tw != mUVRect.width || th != mUVRect.height)
 				{
-					if (x > maxX) maxX = x;
-					x = 0;
-					y += lineHeight;
-					prev = 0;
-					continue;
+					//Debug.LogWarning("Font sprite size doesn't match the expected font texture size.\n" +
+					//	"Did you use the 'inner padding' setting on the Texture Packer? It must remain at '0'.", this);
+					mUVRect.width = tw;
+					mUVRect.height = th;
 				}
-
-				// Skip invalid characters
-				if (c < ' ') { prev = 0; continue; }
-
-				// See if there is a symbol matching this text
-				BMSymbol symbol = useSymbols ? MatchSymbol(text, i, length) : null;
-
-				if (symbol == null)
-				{
-					// Get the glyph for this character
-					BMGlyph glyph = mFont.GetGlyph(c);
-
-					if (glyph != null)
-					{
-						x += mSpacingX + ((prev != 0) ? glyph.advance + glyph.GetKerning(prev) : glyph.advance);
-						prev = c;
-					}
-				}
-				else
-				{
-					// Symbol found -- use it
-					x += mSpacingX + symbol.width;
-					i += symbol.length - 1;
-					prev = 0;
-				}
-			}
-
-			// Convert from pixel coordinates to local coordinates
-			v.x = ((x > maxX) ? x : maxX);
-			v.y = (y + lineHeight);
-		}
-		return v;
-	}
-
-	/// <summary>
-	/// Get the end of line that would fit into a field of given width.
-	/// </summary>
-
-	public string GetEndOfLineThatFits (string text, int size, int lineWidth, bool encoding, SymbolStyle symbolStyle)
-	{
-		int textLength = text.Length;
-		int offset = CalculateOffsetToFit(text, size, lineWidth, encoding, symbolStyle);
-		return text.Substring(offset, textLength - offset);
-	}
-
-	/// <summary>
-	/// Calculate the character index offset required to print the end of the specified text.
-	/// Originally contributed by MightyM: http://www.tasharen.com/forum/index.php?topic=1049.0
-	/// </summary>
-
-	public int CalculateOffsetToFit (string text, int size, int lineWidth, bool encoding, SymbolStyle symbolStyle)
-	{
-		if (lineWidth < 1) return 0;
-		if (mReplacement != null) return mReplacement.CalculateOffsetToFit(text, size, lineWidth, encoding, symbolStyle);
-
-#if DYNAMIC_FONT
-		if (isDynamic) return NGUIText.CalculateOffsetToFit(text, mDynamicFont, size, mDynamicFontStyle, lineWidth);
-#endif
-		int textLength = text.Length;
-		int remainingWidth = lineWidth;
-		BMGlyph followingGlyph = null;
-		int currentCharacterIndex = textLength;
-		bool useSymbols = encoding && symbolStyle != SymbolStyle.None && hasSymbols;
-
-		while (currentCharacterIndex > 0 && remainingWidth > 0)
-		{
-			char currentCharacter = text[--currentCharacterIndex];
-
-			// See if there is a symbol matching this text
-			BMSymbol symbol = useSymbols ? MatchSymbol(text, currentCharacterIndex, textLength) : null;
-
-			// Calculate how wide this symbol or character is going to be
-			int glyphWidth = mSpacingX;
-
-			if (symbol != null)
-			{
-				glyphWidth += symbol.advance;
-			}
-			else
-			{
-				// Find the glyph for this character
-				BMGlyph glyph = mFont.GetGlyph(currentCharacter);
-
-				if (glyph != null)
-				{
-					glyphWidth += glyph.advance + ((followingGlyph == null) ? 0 : followingGlyph.GetKerning(currentCharacter));
-					followingGlyph = glyph;
-				}
-				else
-				{
-					followingGlyph = null;
-					continue;
-				}
-			}
-
-			// Remaining width after this glyph gets printed
-			remainingWidth -= glyphWidth;
-		}
-		if (remainingWidth < 0) ++currentCharacterIndex;
-		return currentCharacterIndex;
-	}
-
-	/// <summary>
-	/// Text wrapping functionality. Legacy compatibility function.
-	/// </summary>
-
-	public bool WrapText (string text, int size, out string finalText, int width, int height, int maxLines, bool encoding)
-	{
-		return WrapText(text, size, out finalText, width, height, maxLines, encoding, SymbolStyle.None);
-	}
-
-	/// <summary>
-	/// Text wrapping functionality. Legacy compatibility function.
-	/// </summary>
-
-	public bool WrapText (string text, int size, out string finalText, int width, int height, int maxLineCount)
-	{
-		return WrapText(text, size, out finalText, width, height, maxLineCount, false, SymbolStyle.None);
-	}
-
-	/// <summary>
-	/// Text wrapping functionality. The 'width' and 'height' should be in pixels.
-	/// Returns 'true' if the specified text was able to fit into the provided dimensions, 'false' otherwise.
-	/// </summary>
-
-	public bool WrapText (string text, int size, out string finalText, int width, int height, int maxLines, bool encoding, SymbolStyle symbolStyle)
-	{
-		if (mReplacement != null)
-		{
-			return mReplacement.WrapText(text, size, out finalText, width, height, maxLines, encoding, symbolStyle);
-		}
-
-#if DYNAMIC_FONT
-		if (isDynamic)
-			return NGUIText.WrapText(text, mDynamicFont, size, mDynamicFontStyle, width, height, maxLines, encoding, out finalText);
-#endif
-		if (width < 1 || height < 1)
-		{
-			finalText = "";
-			return false;
-		}
-
-		if (maxLines > 0) height = Mathf.Min(height, size * maxLines);
-
-		int maxLineCount = (maxLines > 0) ? maxLines : 1000000;
-		maxLineCount = Mathf.Min(maxLineCount, height / size);
-
-		if (maxLineCount == 0)
-		{
-			finalText = "";
-			return false;
-		}
-
-		StringBuilder sb = new StringBuilder();
-		int textLength = text.Length;
-		int remainingWidth = width;
-		int previousChar = 0;
-		int start = 0;
-		int offset = 0;
-		int lineCount = 1;
-		bool lineIsEmpty = true;
-		bool useSymbols = encoding && symbolStyle != SymbolStyle.None && hasSymbols;
-
-		// Run through all characters
-		for (; offset < textLength; ++offset)
-		{
-			char ch = text[offset];
-
-			// New line character -- start a new line
-			if (ch == '\n')
-			{
-				if (lineCount == maxLineCount) break;
-				remainingWidth = width;
-
-				// Add the previous word to the final string
-				if (start < offset) sb.Append(text.Substring(start, offset - start + 1));
-				else sb.Append(ch);
-
-				lineIsEmpty = true;
-				++lineCount;
-				start = offset + 1;
-				previousChar = 0;
-				continue;
-			}
-
-			// If this marks the end of a word, add it to the final string.
-			if (ch == ' ' && previousChar != ' ' && start < offset)
-			{
-				sb.Append(text.Substring(start, offset - start + 1));
-				lineIsEmpty = false;
-				start = offset + 1;
-				previousChar = ch;
-			}
-
-			// When encoded symbols such as [RrGgBb] or [-] are encountered, skip past them
-			if (NGUIText.ParseSymbol(text, ref offset)) { --offset; continue; }
-
-			// See if there is a symbol matching this text
-			BMSymbol symbol = useSymbols ? MatchSymbol(text, offset, textLength) : null;
-
-			// Calculate how wide this symbol or character is going to be
-			int glyphWidth = mSpacingX;
-
-			if (symbol != null)
-			{
-				glyphWidth += symbol.advance;
-			}
-			else
-			{
-				// Find the glyph for this character
-				BMGlyph glyph = (symbol == null) ? mFont.GetGlyph(ch) : null;
-
-				if (glyph != null) glyphWidth += (previousChar != 0) ?
-					glyph.advance + glyph.GetKerning(previousChar) : glyph.advance;
-
-				else continue;
-			}
-
-			// Remaining width after this glyph gets printed
-			remainingWidth -= glyphWidth;
-
-			// Doesn't fit?
-			if (remainingWidth < 0)
-			{
-				// Can't start a new line
-				if (lineIsEmpty || lineCount == maxLineCount)
-				{
-					// This is the first word on the line -- add it up to the character that fits
-					sb.Append(text.Substring(start, Mathf.Max(0, offset - start)));
-
-					if (lineCount++ == maxLineCount)
-					{
-						start = offset;
-						break;
-					}
-					NGUIText.EndLine(ref sb);
-
-					// Start a brand-new line
-					lineIsEmpty = true;
-
-					if (ch == ' ')
-					{
-						start = offset + 1;
-						remainingWidth = width;
-					}
-					else
-					{
-						start = offset;
-						remainingWidth = width - glyphWidth;
-					}
-					previousChar = 0;
-				}
-				else
-				{
-					// Skip all spaces before the word
-					while (start < textLength && text[start] == ' ') ++start;
-
-					// Revert the position to the beginning of the word and reset the line
-					lineIsEmpty = true;
-					remainingWidth = width;
-					offset = start - 1;
-					previousChar = 0;
-
-					if (lineCount++ == maxLineCount) break;
-					NGUIText.EndLine(ref sb);
-					continue;
-				}
-			}
-			else previousChar = ch;
-
-			// Advance the offset past the symbol
-			if (symbol != null)
-			{
-				offset += symbol.length - 1;
-				previousChar = 0;
-			}
-		}
-
-		if (start < offset) sb.Append(text.Substring(start, offset - start));
-		finalText = sb.ToString();
-		return (offset == textLength) || (lineCount <= Mathf.Min(maxLines, maxLineCount));
-	}
-
-	/// <summary>
-	/// Print the specified text into the buffers.
-	/// Note: 'lineWidth' parameter should be in pixels.
-	/// </summary>
-
-	public void Print (string text, int size, Color32 color, BetterList<Vector3> verts, BetterList<Vector2> uvs, BetterList<Color32> cols,
-		bool encoding, SymbolStyle symbolStyle, TextAlignment alignment, int lineWidth, bool premultiply)
-	{
-		if (mReplacement != null)
-		{
-			mReplacement.Print(text, size, color, verts, uvs, cols, encoding, symbolStyle, alignment, lineWidth, premultiply);
-		}
-		else if (text != null)
-		{
-			if (!isValid)
-			{
-				Debug.LogError("Attempting to print using an invalid font!");
-				return;
-			}
-
-#if DYNAMIC_FONT
-			if (isDynamic)
-			{
-				NGUIText.Print(text, dynamicFont, size, mDynamicFontStyle, color, encoding,
-					alignment, lineWidth, premultiply, verts, uvs, cols);
-				return;
 			}
 #endif
-			mColors.Clear();
-			mColors.Add(color);
-
-			int fs = size;
-			int indexOffset = verts.size;
-			int maxX = 0;
-			int x = 0;
-			int y = 0;
-			int prev = 0;
-			int lineHeight = (fs + mSpacingY);
-			Vector3 v0 = Vector3.zero, v1 = Vector3.zero;
-			Vector2 u0 = Vector2.zero, u1 = Vector2.zero;
-
-			float invX = uvRect.width / mFont.texWidth;
-			float invY = mUVRect.height / mFont.texHeight;
-
-			int textLength = text.Length;
-			bool useSymbols = encoding && symbolStyle != SymbolStyle.None && hasSymbols && sprite != null;
-
-			for (int i = 0; i < textLength; ++i)
-			{
-				char c = text[i];
-
-				if (c == '\n')
-				{
-					if (x > maxX) maxX = x;
-
-					if (alignment != TextAlignment.Left)
-					{
-						NGUIText.Align(verts, indexOffset, alignment, x, lineWidth);
-						indexOffset = verts.size;
-					}
-
-					x = 0;
-					y += lineHeight;
-					prev = 0;
-					continue;
-				}
-
-				if (c < ' ')
-				{
-					prev = 0;
-					continue;
-				}
-
-				if (encoding && NGUIText.ParseSymbol(text, ref i, mColors, premultiply))
-				{
-					color = mColors[mColors.size - 1];
-					--i;
-					continue;
-				}
-
-				// See if there is a symbol matching this text
-				BMSymbol symbol = useSymbols ? MatchSymbol(text, i, textLength) : null;
-
-				if (symbol == null)
-				{
-					BMGlyph glyph = mFont.GetGlyph(c);
-					if (glyph == null) continue;
-
-					if (prev != 0) x += glyph.GetKerning(prev);
-
-					if (c == ' ')
-					{
-						x += mSpacingX + glyph.advance;
-						prev = c;
-						continue;
-					}
-
-					v0.x =  (x + glyph.offsetX);
-					v0.y = -(y + glyph.offsetY);
-
-					v1.x = v0.x + glyph.width;
-					v1.y = v0.y - glyph.height;
-
-					u0.x = mUVRect.xMin + invX * glyph.x;
-					u0.y = mUVRect.yMax - invY * glyph.y;
-
-					u1.x = u0.x + invX * glyph.width;
-					u1.y = u0.y - invY * glyph.height;
-
-					x += mSpacingX + glyph.advance;
-					prev = c;
-
-					if (glyph.channel == 0 || glyph.channel == 15)
-					{
-						for (int b = 0; b < 4; ++b) cols.Add(color);
-					}
-					else
-					{
-						// Packed fonts come as alpha masks in each of the RGBA channels.
-						// In order to use it we need to use a special shader.
-						//
-						// Limitations:
-						// - Effects (drop shadow, outline) will not work.
-						// - Should not be a part of the atlas (eastern fonts rarely are anyway).
-						// - Lower color precision
-
-						Color col = color;
-
-						col *= 0.49f;
-
-						switch (glyph.channel)
-						{
-							case 1: col.b += 0.51f; break;
-							case 2: col.g += 0.51f; break;
-							case 4: col.r += 0.51f; break;
-							case 8: col.a += 0.51f; break;
-						}
-
-						for (int b = 0; b < 4; ++b) cols.Add(col);
-					}
-				}
-				else
-				{
-					v0.x =  (x + symbol.offsetX);
-					v0.y = -(y + symbol.offsetY);
-
-					v1.x = v0.x + symbol.width;
-					v1.y = v0.y - symbol.height;
-
-					Rect uv = symbol.uvRect;
-
-					u0.x = uv.xMin;
-					u0.y = uv.yMax;
-					u1.x = uv.xMax;
-					u1.y = uv.yMin;
-
-					x += mSpacingX + symbol.advance;
-					i += symbol.length - 1;
-					prev = 0;
-
-					if (symbolStyle == SymbolStyle.Colored)
-					{
-						for (int b = 0; b < 4; ++b) cols.Add(color);
-					}
-					else
-					{
-						Color32 col = Color.white;
-						col.a = color.a;
-						for (int b = 0; b < 4; ++b) cols.Add(col);
-					}
-				}
-
-				verts.Add(new Vector3(v1.x, v0.y));
-				verts.Add(new Vector3(v1.x, v1.y));
-				verts.Add(new Vector3(v0.x, v1.y));
-				verts.Add(new Vector3(v0.x, v0.y));
-
-				uvs.Add(new Vector2(u1.x, u0.y));
-				uvs.Add(new Vector2(u1.x, u1.y));
-				uvs.Add(new Vector2(u0.x, u1.y));
-				uvs.Add(new Vector2(u0.x, u0.y));
-			}
-
-			if (alignment != TextAlignment.Left && indexOffset < verts.size)
-			{
-				NGUIText.Align(verts, indexOffset, alignment, x, lineWidth);
-				indexOffset = verts.size;
-			}
+			// Trimmed sprite? Trim the glyphs
+			if (mSprite.hasPadding) Trim();
 		}
 	}
 
@@ -1134,7 +592,7 @@ public class UIFont : MonoBehaviour
 	/// Retrieve the symbol at the beginning of the specified sequence, if a match is found.
 	/// </summary>
 
-	BMSymbol MatchSymbol (string text, int offset, int textLength)
+	public BMSymbol MatchSymbol (string text, int offset, int textLength)
 	{
 		// No symbols present
 		int count = mSymbols.Count;

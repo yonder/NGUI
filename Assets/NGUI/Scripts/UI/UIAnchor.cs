@@ -1,6 +1,6 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2013 Tasharen Entertainment
+// Copyright © 2011-2014 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -26,8 +26,6 @@ public class UIAnchor : MonoBehaviour
 		Center,
 	}
 
-	bool mNeedsHalfPixelOffset = false;
-
 	/// <summary>
 	/// Camera used to determine the anchor bounds. Set automatically if none was specified.
 	/// </summary>
@@ -47,17 +45,11 @@ public class UIAnchor : MonoBehaviour
 	public Side side = Side.Center;
 
 	/// <summary>
-	/// Whether a half-pixel offset will be applied on windows machines. Most of the time you'll want to leave this as 'true'.
-	/// This value is only used if the widget and panel containers were not specified.
+	/// If set to 'true', UIAnchor will execute once, then will be disabled.
+	/// Screen size changes will still cause the anchor to update itself, even if it's disabled.
 	/// </summary>
 
-	public bool halfPixelOffset = true;
-
-	/// <summary>
-	/// If set to 'true', UIAnchor will execute once, then will be removed. Useful if your screen resolution never changes.
-	/// </summary>
-
-	public bool runOnlyOnce = false;
+	public bool runOnlyOnce = true;
 
 	/// <summary>
 	/// Relative offset value, if any. For example "0.25" with 'side' set to Left, means 25% from the left side.
@@ -79,12 +71,22 @@ public class UIAnchor : MonoBehaviour
 	Animation mAnim;
 	Rect mRect = new Rect();
 	UIRoot mRoot;
+	bool mStarted = false;
 
 	void Awake ()
 	{
 		mTrans = transform;
+#if UNITY_4_3 || UNITY_4_5 || UNITY_4_6
 		mAnim = animation;
+#else
+		mAnim = GetComponent<Animation>();
+#endif
+		UICamera.onScreenResize += ScreenSizeChanged;
 	}
+
+	void OnDestroy () { UICamera.onScreenResize -= ScreenSizeChanged; }
+
+	void ScreenSizeChanged () { if (mStarted && runOnlyOnce) Update(); }
 
 	/// <summary>
 	/// Automatically find the camera responsible for drawing the widgets under this object.
@@ -97,21 +99,16 @@ public class UIAnchor : MonoBehaviour
 			container = widgetContainer.gameObject;
 			widgetContainer = null;
 #if UNITY_EDITOR
-			UnityEditor.EditorUtility.SetDirty(this);
+			NGUITools.SetDirty(this);
 #endif
 		}
 
 		mRoot = NGUITools.FindInParents<UIRoot>(gameObject);
-		mNeedsHalfPixelOffset = (Application.platform == RuntimePlatform.WindowsPlayer ||
-			Application.platform == RuntimePlatform.XBOX360 ||
-			Application.platform == RuntimePlatform.WindowsWebPlayer ||
-			Application.platform == RuntimePlatform.WindowsEditor);
-
-		// Only DirectX 9 needs the half-pixel offset
-		if (mNeedsHalfPixelOffset) mNeedsHalfPixelOffset = (SystemInfo.graphicsShaderLevel < 40);
-
 		if (uiCamera == null) uiCamera = NGUITools.FindCameraForLayer(gameObject.layer);
+		
 		Update();
+
+		mStarted = true;
 	}
 
 	/// <summary>
@@ -126,7 +123,7 @@ public class UIAnchor : MonoBehaviour
 
 		UIWidget wc = (container == null) ? null : container.GetComponent<UIWidget>();
 		UIPanel pc = (container == null && wc == null) ? null : container.GetComponent<UIPanel>();
-		
+
 		if (wc != null)
 		{
 			Bounds b = wc.CalculateBounds(container.transform.parent);
@@ -151,7 +148,7 @@ public class UIAnchor : MonoBehaviour
 			else
 			{
 				// Panel has clipping -- use it as the mRect
-				Vector4 pos = pc.clipRange;
+				Vector4 pos = pc.finalClipRegion;
 				mRect.x = pos.x - (pos.z * 0.5f);
 				mRect.y = pos.y - (pos.w * 0.5f);
 				mRect.width = pos.z;
@@ -204,12 +201,6 @@ public class UIAnchor : MonoBehaviour
 			{
 				v.x = Mathf.Round(v.x);
 				v.y = Mathf.Round(v.y);
-
-				if (halfPixelOffset && mNeedsHalfPixelOffset)
-				{
-					v.x -= 0.5f;
-					v.y += 0.5f;
-				}
 			}
 
 			v.z = uiCamera.WorldToScreenPoint(mTrans.position).z;
@@ -234,6 +225,6 @@ public class UIAnchor : MonoBehaviour
 
 		// Wrapped in an 'if' so the scene doesn't get marked as 'edited' every frame
 		if (mTrans.position != v) mTrans.position = v;
-		if (runOnlyOnce && Application.isPlaying) Destroy(this);
+		if (runOnlyOnce && Application.isPlaying) enabled = false;
 	}
 }
