@@ -1,6 +1,6 @@
-﻿//----------------------------------------------
+//----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright © 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -12,27 +12,34 @@ using UnityEngine;
 [AddComponentMenu("NGUI/Internal/Ignore TimeScale Behaviour")]
 public class IgnoreTimeScale : MonoBehaviour
 {
-	float mTime = 0f;
+	float mRt = 0f;
+	float mTimeStart = 0f;
+	float mTimeDelta = 0f;
 	float mActual = 0f;
-	float mDelta = 0f;
+	bool mTimeStarted = false;
+
+	/// <summary>
+	/// Real time of the last time UpdateRealTimeDelta() was called.
+	/// </summary>
+
+	public float realTime { get { return mRt; } }
 
 	/// <summary>
 	/// Equivalent of Time.deltaTime not affected by timeScale, provided that UpdateRealTimeDelta() was called in the Update().
 	/// </summary>
 
-	public float realTimeDelta { get { return mDelta; } }
+	public float realTimeDelta { get { return mTimeDelta; } }
 
 	/// <summary>
-	/// Record the current time.
+	/// Clear the started flag;
 	/// </summary>
 
-	void OnEnable () { mTime = Time.realtimeSinceStartup; }
-
-	/// <summary>
-	/// Record the time on start.
-	/// </summary>
-
-	void Start () { mTime = Time.realtimeSinceStartup; }
+	protected virtual void OnEnable ()
+	{
+		mTimeStarted = true;
+		mTimeDelta = 0f;
+		mTimeStart = Time.realtimeSinceStartup;
+	}
 
 	/// <summary>
 	/// Update the 'realTimeDelta' parameter. Should be called once per frame.
@@ -40,12 +47,23 @@ public class IgnoreTimeScale : MonoBehaviour
 
 	protected float UpdateRealTimeDelta ()
 	{
-		float time = Time.realtimeSinceStartup;
-		float delta = time - mTime;
-		mActual += Mathf.Max(0f, delta);
-		mDelta = 0.001f * Mathf.Round(mActual * 1000f);
-		mActual -= mDelta;
-		mTime = time;
-		return mDelta;
+		mRt = Time.realtimeSinceStartup;
+
+		if (mTimeStarted)
+		{
+			float delta = mRt - mTimeStart;
+			mActual += Mathf.Max(0f, delta);
+			mTimeDelta = 0.001f * Mathf.Round(mActual * 1000f);
+			mActual -= mTimeDelta;
+			if (mTimeDelta > 1f) mTimeDelta = 1f;
+			mTimeStart = mRt;
+		}
+		else
+		{
+			mTimeStarted = true;
+			mTimeStart = mRt;
+			mTimeDelta = 0f;
+		}
+		return mTimeDelta;
 	}
 }

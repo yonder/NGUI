@@ -1,6 +1,6 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright Â© 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -29,8 +29,11 @@ public class UIGrid : MonoBehaviour
 	public bool sorted = false;
 	public bool hideInactive = true;
 
+	bool mStarted = false;
+
 	void Start ()
 	{
+		mStarted = true;
 		Reposition();
 	}
 
@@ -45,8 +48,18 @@ public class UIGrid : MonoBehaviour
 
 	static public int SortByName (Transform a, Transform b) { return string.Compare(a.name, b.name); }
 
+	/// <summary>
+	/// Recalculate the position of all elements within the grid, sorting them alphabetically if necessary.
+	/// </summary>
+
 	public void Reposition ()
 	{
+		if (!mStarted)
+		{
+			repositionNow = true;
+			return;
+		}
+
 		Transform myTrans = transform;
 
 		int x = 0;
@@ -56,17 +69,23 @@ public class UIGrid : MonoBehaviour
 		{
 			List<Transform> list = new List<Transform>();
 
-			for (int i = 0; i < myTrans.childCount; ++i) list.Add(myTrans.GetChild(i));
+			for (int i = 0; i < myTrans.childCount; ++i)
+			{
+				Transform t = myTrans.GetChild(i);
+				if (t && (!hideInactive || NGUITools.GetActive(t.gameObject))) list.Add(t);
+			}
 			list.Sort(SortByName);
 
 			for (int i = 0, imax = list.Count; i < imax; ++i)
 			{
 				Transform t = list[i];
-				if (!t.gameObject.active && hideInactive) continue;
 
+				if (!NGUITools.GetActive(t.gameObject) && hideInactive) continue;
+
+				float depth = t.localPosition.z;
 				t.localPosition = (arrangement == Arrangement.Horizontal) ?
-					new Vector3(cellWidth * x, -cellHeight * y, 0f) :
-					new Vector3(cellWidth * y, -cellHeight * x, 0f);
+					new Vector3(cellWidth * x, -cellHeight * y, depth) :
+					new Vector3(cellWidth * y, -cellHeight * x, depth);
 
 				if (++x >= maxPerLine && maxPerLine > 0)
 				{
@@ -81,11 +100,12 @@ public class UIGrid : MonoBehaviour
 			{
 				Transform t = myTrans.GetChild(i);
 
-				if (!t.gameObject.active && hideInactive) continue;
+				if (!NGUITools.GetActive(t.gameObject) && hideInactive) continue;
 
+				float depth = t.localPosition.z;
 				t.localPosition = (arrangement == Arrangement.Horizontal) ?
-					new Vector3(cellWidth * x, -cellHeight * y, 0f) :
-					new Vector3(cellWidth * y, -cellHeight * x, 0f);
+					new Vector3(cellWidth * x, -cellHeight * y, depth) :
+					new Vector3(cellWidth * y, -cellHeight * x, depth);
 
 				if (++x >= maxPerLine && maxPerLine > 0)
 				{

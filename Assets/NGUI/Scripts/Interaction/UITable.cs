@@ -1,6 +1,6 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright © 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -16,21 +16,58 @@ using System.Collections.Generic;
 [AddComponentMenu("NGUI/Interaction/Table")]
 public class UITable : MonoBehaviour
 {
+	public delegate void OnReposition ();
+
+	public enum Direction
+	{
+		Down,
+		Up,
+	}
+
 	public int columns = 0;
+	public Direction direction = Direction.Down;
 	public Vector2 padding = Vector2.zero;
 	public bool sorted = false;
 	public bool hideInactive = true;
 	public bool repositionNow = false;
 	public bool keepWithinPanel = false;
+	public OnReposition onReposition;
 
 	UIPanel mPanel;
 	UIDraggablePanel mDrag;
+	bool mStarted = false;
+	List<Transform> mChildren = new List<Transform>();
 
 	/// <summary>
 	/// Function that sorts items by name.
 	/// </summary>
 
 	static public int SortByName (Transform a, Transform b) { return string.Compare(a.name, b.name); }
+
+	/// <summary>
+	/// Returns the list of table's children, sorted alphabetically if necessary.
+	/// </summary>
+
+	public List<Transform> children
+	{
+		get
+		{
+			if (mChildren.Count == 0)
+			{
+				Transform myTrans = transform;
+				mChildren.Clear();
+
+				for (int i = 0; i < myTrans.childCount; ++i)
+				{
+					Transform child = myTrans.GetChild(i);
+
+					if (child && child.gameObject && (!hideInactive || NGUITools.GetActive(child.gameObject))) mChildren.Add(child);
+				}
+				if (sorted) mChildren.Sort(SortByName);
+			}
+			return mChildren;
+		}
+	}
 
 	/// <summary>
 	/// Positions the grid items, taking their own size into consideration.
@@ -81,11 +118,19 @@ public class UITable : MonoBehaviour
 			Bounds bc = boundsCols[y];
 
 			Vector3 pos = t.localPosition;
-			pos.x =   xOffset + b.extents.x - b.center.x;
-			pos.y = -(yOffset + b.extents.y + b.center.y);
-
+			pos.x = xOffset + b.extents.x - b.center.x;
 			pos.x += b.min.x - br.min.x + padding.x;
-			pos.y += (b.max.y - b.min.y - bc.max.y + bc.min.y) * 0.5f - padding.y;
+
+			if (direction == Direction.Down)
+			{
+				pos.y = -yOffset - b.extents.y - b.center.y;
+				pos.y += (b.max.y - b.min.y - bc.max.y + bc.min.y) * 0.5f - padding.y;
+			}
+			else
+			{
+				pos.y = yOffset + b.extents.y - b.center.y;
+				pos.y += (b.max.y - b.min.y - bc.max.y + bc.min.y) * 0.5f - padding.y;
+			}
 
 			xOffset += br.max.x - br.min.x + padding.x * 2f;
 
@@ -103,27 +148,30 @@ public class UITable : MonoBehaviour
 	}
 
 	/// <summary>
-	/// Reposition all elements in the grid.
+	/// Recalculate the position of all elements within the table, sorting them alphabetically if necessary.
 	/// </summary>
 
 	public void Reposition ()
 	{
-		Transform myTrans = transform;
-		List<Transform> children = new List<Transform>();
-
-		for (int i = 0; i < myTrans.childCount; ++i)
+		if (mStarted)
 		{
-			Transform child = myTrans.GetChild(i);
+			Transform myTrans = transform;
+			mChildren.Clear();
+			List<Transform> ch = children;
+			if (ch.Count > 0) RepositionVariableSize(ch);
 
-			if (!hideInactive || child.gameObject.active)
+			if (mDrag != null)
 			{
-				children.Add(child);
+				mDrag.UpdateScrollbars(true);
+				mDrag.RestrictWithinBounds(true);
 			}
+			else if (mPanel != null)
+			{
+				mPanel.ConstrainTargetToBounds(myTrans, true);
+			}
+			if (onReposition != null) onReposition();
 		}
-		if (sorted) children.Sort(SortByName);
-		if (children.Count > 0) RepositionVariableSize(children);
-		if (mPanel != null) mPanel.ConstrainTargetToBounds(myTrans, true);
-		if (mDrag != null) mDrag.UpdateScrollbars(true);
+		else repositionNow = true;
 	}
 
 	/// <summary>
@@ -132,6 +180,8 @@ public class UITable : MonoBehaviour
 
 	void Start ()
 	{
+		mStarted = true;
+
 		if (keepWithinPanel)
 		{
 			mPanel = NGUITools.FindInParents<UIPanel>(gameObject);

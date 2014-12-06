@@ -1,6 +1,6 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright Â© 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -14,6 +14,12 @@ using System.Collections.Generic;
 [AddComponentMenu("NGUI/Interaction/Popup List")]
 public class UIPopupList : MonoBehaviour
 {
+	/// <summary>
+	/// Current popup list. Only available during the OnSelectionChange event callback.
+	/// </summary>
+
+	static public UIPopupList current;
+
 	const float animSpeed = 0.15f;
 
 	public enum Position
@@ -22,6 +28,8 @@ public class UIPopupList : MonoBehaviour
 		Above,
 		Below,
 	}
+
+	public delegate void OnSelectionChange (string item);
 
 	/// <summary>
 	/// Atlas used by the sprites.
@@ -119,7 +127,13 @@ public class UIPopupList : MonoBehaviour
 
 	public string functionName = "OnSelectionChange";
 
-	[SerializeField] string mSelectedItem;
+	/// <summary>
+	/// Delegate that will be called when the selection changes. Faster than using the 'eventReceiver'.
+	/// </summary>
+
+	public OnSelectionChange onSelectionChange;
+
+	[HideInInspector][SerializeField] string mSelectedItem;
 	UIPanel mPanel;
 	GameObject mChild;
 	UISprite mBackground;
@@ -149,19 +163,24 @@ public class UIPopupList : MonoBehaviour
 			if (mSelectedItem != value)
 			{
 				mSelectedItem = value;
+				if (mSelectedItem == null) return;
 				
 				if (textLabel != null)
 				{
-					textLabel.text = (isLocalized && Localization.instance != null) ? Localization.instance.Get(value) : value;
+					textLabel.text = (isLocalized) ? Localization.Localize(value) : value;
 #if UNITY_EDITOR
 					UnityEditor.EditorUtility.SetDirty(textLabel.gameObject);
 #endif
 				}
 
+				current = this;
+				if (onSelectionChange != null) onSelectionChange(mSelectedItem);
+
 				if (eventReceiver != null && !string.IsNullOrEmpty(functionName) && Application.isPlaying)
 				{
 					eventReceiver.SendMessage(functionName, mSelectedItem, SendMessageOptions.DontRequireReceiver);
 				}
+				current = null;
 			}
 		}
 	}
@@ -229,11 +248,14 @@ public class UIPopupList : MonoBehaviour
 
 			mHighlightedLabel = lbl;
 
-			UIAtlas.Sprite sp = mHighlight.sprite;
-			float offsetX = sp.inner.xMin - sp.outer.xMin;
-			float offsetY = sp.inner.yMin - sp.outer.yMin;
+			UIAtlas.Sprite sp = mHighlight.GetAtlasSprite();
+			if (sp == null) return;
 
-			Vector3 pos = lbl.cachedTransform.localPosition + new Vector3(-offsetX, offsetY, 0f);
+			float scaleFactor = atlas.pixelSize;
+			float offsetX = (sp.inner.xMin - sp.outer.xMin) * scaleFactor;
+			float offsetY = (sp.inner.yMin - sp.outer.yMin) * scaleFactor;
+
+			Vector3 pos = lbl.cachedTransform.localPosition + new Vector3(-offsetX, offsetY, 1f);
 
 			if (instant || !isAnimated)
 			{
@@ -278,7 +300,7 @@ public class UIPopupList : MonoBehaviour
 
 			if (snd.trigger == UIButtonSound.Trigger.OnClick)
 			{
-				NGUITools.PlaySound(snd.audioClip, snd.volume);
+				NGUITools.PlaySound(snd.audioClip, snd.volume, 1f);
 			}
 		}
 	}
@@ -295,7 +317,7 @@ public class UIPopupList : MonoBehaviour
 
 	void OnKey (KeyCode key)
 	{
-		if (enabled && gameObject.active && handleEvents)
+		if (enabled && NGUITools.GetActive(gameObject) && handleEvents)
 		{
 			int index = mLabelList.IndexOf(mHighlightedLabel);
 
@@ -345,7 +367,7 @@ public class UIPopupList : MonoBehaviour
 
 				Collider[] cols = mChild.GetComponentsInChildren<Collider>();
 				for (int i = 0, imax = cols.Length; i < imax; ++i) cols[i].enabled = false;
-				UpdateManager.AddDestroy(mChild, animSpeed);
+				Destroy(mChild, animSpeed);
 			}
 			else
 			{
@@ -422,7 +444,7 @@ public class UIPopupList : MonoBehaviour
 
 	void OnClick()
 	{
-		if (mChild == null && atlas != null && font != null && items.Count > 1)
+		if (mChild == null && atlas != null && font != null && items.Count > 0)
 		{
 			mLabelList.Clear();
 
@@ -463,9 +485,11 @@ public class UIPopupList : MonoBehaviour
 			mHighlight.pivot = UIWidget.Pivot.TopLeft;
 			mHighlight.color = highlightColor;
 
-			UIAtlas.Sprite hlsp = mHighlight.sprite;
+			UIAtlas.Sprite hlsp = mHighlight.GetAtlasSprite();
+			if (hlsp == null) return;
+
 			float hlspHeight = hlsp.inner.yMin - hlsp.outer.yMin;
-			float fontScale = font.size * textScale;
+			float fontScale = font.size * font.pixelSize * textScale;
 			float x = 0f, y = -padding.y;
 			List<UILabel> labels = new List<UILabel>();
 
@@ -479,7 +503,7 @@ public class UIPopupList : MonoBehaviour
 				lbl.font = font;
 				lbl.text = (isLocalized && Localization.instance != null) ? Localization.instance.Get(s) : s;
 				lbl.color = textColor;
-				lbl.cachedTransform.localPosition = new Vector3(bgPadding.x, y, 0f);
+				lbl.cachedTransform.localPosition = new Vector3(bgPadding.x + padding.x, y, -1f);
 				lbl.MakePixelPerfect();
 
 				if (textScale != 1f)
@@ -507,7 +531,7 @@ public class UIPopupList : MonoBehaviour
 			}
 
 			// The triggering widget's width should be the minimum allowed width
-			x = Mathf.Max(x, bounds.size.x - bgPadding.x * 2f);
+			x = Mathf.Max(x, bounds.size.x - (bgPadding.x + padding.x) * 2f);
 
 			Vector3 bcCenter = new Vector3((x * 0.5f) / fontScale, -0.5f, 0f);
 			Vector3 bcSize = new Vector3(x / fontScale, (fontScale + padding.y) / fontScale, 1f);
@@ -522,16 +546,17 @@ public class UIPopupList : MonoBehaviour
 				bc.size = bcSize;
 			}
 
-			x += bgPadding.x * 2f;
+			x += (bgPadding.x + padding.x) * 2f;
 			y -= bgPadding.y;
 
 			// Scale the background sprite to envelop the entire set of items
 			mBackground.cachedTransform.localScale = new Vector3(x, -y + bgPadding.y, 1f);
 
 			// Scale the highlight sprite to envelop a single item
+			float scaleFactor = 2f * atlas.pixelSize;
 			mHighlight.cachedTransform.localScale = new Vector3(
-				x - bgPadding.x * 2f + (hlsp.inner.xMin - hlsp.outer.xMin) * 2f,
-				fontScale + hlspHeight * 2f, 1f);
+				   x - (bgPadding.x + padding.x) * 2f + (hlsp.inner.xMin - hlsp.outer.xMin) * scaleFactor,
+				   fontScale + hlspHeight * scaleFactor, 1f);
 
 			bool placeAbove = (position == Position.Above);
 

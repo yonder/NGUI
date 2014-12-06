@@ -1,11 +1,13 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright Â© 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
 
 /// <summary>
 /// Helper class containing generic functions used throughout the UI library.
@@ -15,19 +17,69 @@ static public class NGUITools
 {
 	static AudioListener mListener;
 
+	static bool mLoaded = false;
+	static float mGlobalVolume = 1f;
+
+	/// <summary>
+	/// Globally accessible volume affecting all sounds played via NGUITools.PlaySound().
+	/// </summary>
+
+	static public float soundVolume
+	{
+		get
+		{
+			if (!mLoaded)
+			{
+				mLoaded = true;
+				mGlobalVolume = PlayerPrefs.GetFloat("Sound", 1f);
+			}
+			return mGlobalVolume;
+		}
+		set
+		{
+			if (mGlobalVolume != value)
+			{
+				mLoaded = true;
+				mGlobalVolume = value;
+				PlayerPrefs.SetFloat("Sound", value);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Helper function -- whether the disk access is allowed.
+	/// </summary>
+
+	static public bool fileAccess
+	{
+		get
+		{
+			return Application.platform != RuntimePlatform.WindowsWebPlayer &&
+				Application.platform != RuntimePlatform.OSXWebPlayer;
+		}
+	}
+
 	/// <summary>
 	/// Play the specified audio clip.
 	/// </summary>
 
-	static public AudioSource PlaySound (AudioClip clip) { return PlaySound(clip, 1f); }
+	static public AudioSource PlaySound (AudioClip clip) { return PlaySound(clip, 1f, 1f); }
 
 	/// <summary>
 	/// Play the specified audio clip with the specified volume.
 	/// </summary>
 
-	static public AudioSource PlaySound (AudioClip clip, float volume)
+	static public AudioSource PlaySound (AudioClip clip, float volume) { return PlaySound(clip, volume, 1f); }
+
+	/// <summary>
+	/// Play the specified audio clip with the specified volume and pitch.
+	/// </summary>
+
+	static public AudioSource PlaySound (AudioClip clip, float volume, float pitch)
 	{
-		if (clip != null)
+		volume *= soundVolume;
+
+		if (clip != null && volume > 0.01f)
 		{
 			if (mListener == null)
 			{
@@ -41,10 +93,11 @@ static public class NGUITools
 				}
 			}
 
-			if (mListener != null)
+			if (mListener != null && mListener.enabled && NGUITools.GetActive(mListener.gameObject))
 			{
 				AudioSource source = mListener.audio;
 				if (source == null) source = mListener.gameObject.AddComponent<AudioSource>();
+				source.pitch = pitch;
 				source.PlayOneShot(clip, volume);
 				return source;
 			}
@@ -58,7 +111,6 @@ static public class NGUITools
 
 	static public WWW OpenURL (string url)
 	{
-		//Debug.Log(url);
 #if UNITY_FLASH
 		Debug.LogError("WWW is not yet implemented in Flash");
 		return null;
@@ -66,6 +118,24 @@ static public class NGUITools
 		WWW www = null;
 		try { www = new WWW(url); }
 		catch (System.Exception ex) { Debug.LogError(ex.Message); }
+		return www;
+#endif
+	}
+
+	/// <summary>
+	/// New WWW call can fail if the crossdomain policy doesn't check out. Exceptions suck. It's much more elegant to check for null instead.
+	/// </summary>
+
+	static public WWW OpenURL (string url, WWWForm form)
+	{
+		if (form == null) return OpenURL(url);
+#if UNITY_FLASH
+		Debug.LogError("WWW is not yet implemented in Flash");
+		return null;
+#else
+		WWW www = null;
+		try { www = new WWW(url, form); }
+		catch (System.Exception ex) { Debug.LogError(ex != null ? ex.Message : "<null>"); }
 		return www;
 #endif
 	}
@@ -117,20 +187,17 @@ static public class NGUITools
 
 	static public string EncodeColor (Color c)
 	{
-#if UNITY_FLASH
-		// int.ToString(format) doesn't seem to be supported on Flash as of 3.5.0 -- it simply silently crashes
-		return "FFFFFF";
-#else
 		int i = 0xFFFFFF & (NGUIMath.ColorToInt(c) >> 8);
-		return i.ToString("X6");
-#endif
+		return NGUIMath.DecimalToHex(i);
 	}
+
+	static Color mInvisible = new Color(0f, 0f, 0f, 0f);
 
 	/// <summary>
 	/// Parse an embedded symbol, such as [FFAA00] (set color) or [-] (undo color change)
 	/// </summary>
 
-	static public int ParseSymbol (string text, int index, List<Color> colors)
+	static public int ParseSymbol (string text, int index, List<Color> colors, bool premultiply)
 	{
 		int length = text.Length;
 
@@ -151,7 +218,14 @@ static public class NGUITools
 					if (colors != null)
 					{
 						Color c = ParseColor(text, index + 1);
+
+						if (EncodeColor(c) != text.Substring(index + 1, 6).ToUpper())
+							return 0;
+
 						c.a = colors[colors.Count - 1].a;
+						if (premultiply && c.a != 1f)
+							c = Color.Lerp(mInvisible, c, c.a);
+
 						colors.Add(c);
 					}
 					return 8;
@@ -169,15 +243,13 @@ static public class NGUITools
 	{
 		if (text != null)
 		{
-			text = text.Replace("\\n", "\n");
-
 			for (int i = 0, imax = text.Length; i < imax; )
 			{
 				char c = text[i];
 
 				if (c == '[')
 				{
-					int retVal = ParseSymbol(text, i, null);
+					int retVal = ParseSymbol(text, i, null, false);
 
 					if (retVal > 0)
 					{
@@ -198,7 +270,11 @@ static public class NGUITools
 
 	static public T[] FindActive<T> () where T : Component
 	{
+#if UNITY_3_5 || UNITY_4_0
 		return GameObject.FindSceneObjectsOfType(typeof(T)) as T[];
+#else
+		return GameObject.FindObjectsOfType(typeof(T)) as T[];
+#endif
 	}
 
 	/// <summary>
@@ -253,54 +329,6 @@ static public class NGUITools
 			return box;
 		}
 		return null;
-	}
-
-	/// <summary>
-	/// Want to swap a low-res atlas for a hi-res one? Just use this function.
-	/// </summary>
-
-	[Obsolete("Use UIAtlas.replacement instead")]
-	static public void ReplaceAtlas (UIAtlas before, UIAtlas after)
-	{
-		UISprite[] sprites = NGUITools.FindActive<UISprite>();
-
-		for (int i = 0, imax = sprites.Length; i < imax; ++i)
-		{
-			UISprite sprite = sprites[i];
-
-			if (sprite.atlas == before)
-			{
-				sprite.atlas = after;
-			}
-		}
-
-		UILabel[] labels = NGUITools.FindActive<UILabel>();
-
-		for (int i = 0, imax = labels.Length; i < imax; ++i)
-		{
-			UILabel lbl = labels[i];
-
-			if (lbl.font != null && lbl.font.atlas == before)
-			{
-				lbl.font.atlas = after;
-			}
-		}
-	}
-
-	/// <summary>
-	/// Want to swap a low-res font for a hi-res one? This is the way.
-	/// </summary>
-
-	[Obsolete("Use UIFont.replacement instead")]
-	static public void ReplaceFont (UIFont before, UIFont after)
-	{
-		UILabel[] labels = NGUITools.FindActive<UILabel>();
-
-		for (int i = 0, imax = labels.Length; i < imax; ++i)
-		{
-			UILabel lbl = labels[i];
-			if (lbl.font == before) lbl.font = after;
-		}
 	}
 
 	/// <summary>
@@ -401,16 +429,34 @@ static public class NGUITools
 
 	/// <summary>
 	/// Add a sprite appropriate for the specified atlas sprite.
-	/// It will be a UISlicedSprite if the sprite has an inner rect, and a regular sprite otherwise.
+	/// It will be sliced if the sprite has an inner rect, and a regular sprite otherwise.
 	/// </summary>
 
 	static public UISprite AddSprite (GameObject go, UIAtlas atlas, string spriteName)
 	{
 		UIAtlas.Sprite sp = (atlas != null) ? atlas.GetSprite(spriteName) : null;
-		UISprite sprite = (sp == null || sp.inner == sp.outer) ? AddWidget<UISprite>(go) : (UISprite)AddWidget<UISlicedSprite>(go);
+		UISprite sprite = AddWidget<UISprite>(go);
+		sprite.type = (sp == null || sp.inner == sp.outer) ? UISprite.Type.Simple : UISprite.Type.Sliced;
 		sprite.atlas = atlas;
 		sprite.spriteName = spriteName;
 		return sprite;
+	}
+
+	/// <summary>
+	/// Get the rootmost object of the specified game object.
+	/// </summary>
+
+	static public GameObject GetRoot (GameObject go)
+	{
+		Transform t = go.transform;
+
+		for (; ; )
+		{
+			Transform parent = t.parent;
+			if (parent == null) break;
+			t = parent;
+		}
+		return t.gameObject;
 	}
 
 	/// <summary>
@@ -443,7 +489,16 @@ static public class NGUITools
 	{
 		if (obj != null)
 		{
-			if (Application.isPlaying) UnityEngine.Object.Destroy(obj);
+			if (Application.isPlaying)
+			{
+				if (obj is GameObject)
+				{
+					GameObject go = obj as GameObject;
+					go.transform.parent = null;
+				}
+
+				UnityEngine.Object.Destroy(obj);
+			}
 			else UnityEngine.Object.DestroyImmediate(obj);
 		}
 	}
@@ -503,13 +558,31 @@ static public class NGUITools
 
 	static void Activate (Transform t)
 	{
-		t.gameObject.active = true;
+		SetActiveSelf(t.gameObject, true);
 
+		// Prior to Unity 4, active state was not nested. It was possible to have an enabled child of a disabled object.
+		// Unity 4 onwards made it so that the state is nested, and a disabled parent results in a disabled child.
+#if UNITY_3_5
 		for (int i = 0, imax = t.GetChildCount(); i < imax; ++i)
 		{
 			Transform child = t.GetChild(i);
 			Activate(child);
 		}
+#else
+		// If there is even a single enabled child, then we're using a Unity 4.0-based nested active state scheme.
+		for (int i = 0, imax = t.childCount; i < imax; ++i)
+		{
+			Transform child = t.GetChild(i);
+			if (child.gameObject.activeSelf) return;
+		}
+
+		// If this point is reached, then all the children are disabled, so we must be using a Unity 3.5-based active state scheme.
+		for (int i = 0, imax = t.childCount; i < imax; ++i)
+		{
+			Transform child = t.GetChild(i);
+			Activate(child);
+		}
+#endif
 	}
 
 	/// <summary>
@@ -518,16 +591,19 @@ static public class NGUITools
 
 	static void Deactivate (Transform t)
 	{
+#if UNITY_3_5
 		for (int i = 0, imax = t.GetChildCount(); i < imax; ++i)
 		{
 			Transform child = t.GetChild(i);
 			Deactivate(child);
 		}
-		t.gameObject.active = false;
+#endif
+		SetActiveSelf(t.gameObject, false);
 	}
 
 	/// <summary>
-	/// SetActiveRecursively has some strange side-effects... better to do it manually.
+	/// SetActiveRecursively enables children before parents. This is a problem when a widget gets re-enabled
+	/// and it tries to find a panel on its parent.
 	/// </summary>
 
 	static public void SetActive (GameObject go, bool state)
@@ -541,4 +617,239 @@ static public class NGUITools
 			Deactivate(go.transform);
 		}
 	}
+
+	/// <summary>
+	/// Activate or deactivate children of the specified game object without changing the active state of the object itself.
+	/// </summary>
+
+	static public void SetActiveChildren (GameObject go, bool state)
+	{
+		Transform t = go.transform;
+
+		if (state)
+		{
+			for (int i = 0, imax = t.childCount; i < imax; ++i)
+			{
+				Transform child = t.GetChild(i);
+				Activate(child);
+			}
+		}
+		else
+		{
+			for (int i = 0, imax = t.childCount; i < imax; ++i)
+			{
+				Transform child = t.GetChild(i);
+				Deactivate(child);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Unity4 has changed GameObject.active to GameObject.activeself.
+	/// </summary>
+
+	static public bool GetActive(GameObject go)
+	{
+#if UNITY_3_5
+		return go && go.active;
+#else
+		return go && go.activeInHierarchy;
+#endif
+	}
+
+	/// <summary>
+	/// Unity4 has changed GameObject.active to GameObject.SetActive.
+	/// </summary>
+
+	static public void SetActiveSelf(GameObject go, bool state)
+	{
+#if UNITY_3_5
+		go.active = state;
+#else
+		go.SetActive(state);
+#endif
+	}
+
+	/// <summary>
+	/// Recursively set the game object's layer.
+	/// </summary>
+
+	static public void SetLayer (GameObject go, int layer)
+	{
+		go.layer = layer;
+
+		Transform t = go.transform;
+		
+		for (int i = 0, imax = t.childCount; i < imax; ++i)
+		{
+			Transform child = t.GetChild(i);
+			SetLayer(child.gameObject, layer);
+		}
+	}
+
+	/// <summary>
+	/// Helper function used to make the vector use integer numbers.
+	/// </summary>
+
+	static public Vector3 Round (Vector3 v)
+	{
+		v.x = Mathf.Round(v.x);
+		v.y = Mathf.Round(v.y);
+		v.z = Mathf.Round(v.z);
+		return v;
+	}
+
+	/// <summary>
+	/// Make the specified selection pixel-perfect.
+	/// </summary>
+
+	static public void MakePixelPerfect (Transform t)
+	{
+		UIWidget w = t.GetComponent<UIWidget>();
+
+		if (w != null)
+		{
+			w.MakePixelPerfect();
+		}
+		else
+		{
+			t.localPosition = Round(t.localPosition);
+			t.localScale = Round(t.localScale);
+
+			for (int i = 0, imax = t.childCount; i < imax; ++i)
+			{
+				MakePixelPerfect(t.GetChild(i));
+			}
+		}
+	}
+
+	/// <summary>
+	/// Save the specified binary data into the specified file.
+	/// </summary>
+
+	static public bool Save (string fileName, byte[] bytes)
+	{
+#if UNITY_WEBPLAYER || UNITY_FLASH || UNITY_METRO
+		return false;
+#else
+		if (!NGUITools.fileAccess) return false;
+
+		string path = Application.persistentDataPath + "/" + fileName;
+
+		if (bytes == null)
+		{
+			if (File.Exists(path)) File.Delete(path);
+			return true;
+		}
+
+		FileStream file = null;
+
+		try
+		{
+			file = File.Create(path);
+		}
+		catch (System.Exception ex)
+		{
+			NGUIDebug.Log(ex.Message);
+			return false;
+		}
+
+		file.Write(bytes, 0, bytes.Length);
+		file.Close();
+		return true;
+#endif
+	}
+
+	/// <summary>
+	/// Load all binary data from the specified file.
+	/// </summary>
+
+	static public byte[] Load (string fileName)
+	{
+#if UNITY_WEBPLAYER || UNITY_FLASH || UNITY_METRO
+		return null;
+#else
+		if (!NGUITools.fileAccess) return null;
+
+		string path = Application.persistentDataPath + "/" + fileName;
+
+		if (File.Exists(path))
+		{
+			return File.ReadAllBytes(path);
+		}
+		return null;
+#endif
+	}
+
+	/// <summary>
+	/// Pre-multiply shaders result in a black outline if this operation is done in the shader. It's better to do it outside.
+	/// </summary>
+
+	static public Color ApplyPMA (Color c)
+	{
+		if (c.a != 1f)
+		{
+			c.r *= c.a;
+			c.g *= c.a;
+			c.b *= c.a;
+		}
+		return c;
+	}
+
+	/// <summary>
+	/// Inform all widgets underneath the specified object that the parent has changed.
+	/// </summary>
+
+	static public void MarkParentAsChanged (GameObject go)
+	{
+		UIWidget[] widgets = go.GetComponentsInChildren<UIWidget>();
+		for (int i = 0, imax = widgets.Length; i < imax; ++i)
+			widgets[i].ParentHasChanged();
+	}
+
+	/// <summary>
+	/// Clipboard access via reflection.
+	/// http://answers.unity3d.com/questions/266244/how-can-i-add-copypaste-clipboard-support-to-my-ga.html
+	/// </summary>
+
+#if UNITY_WEBPLAYER || UNITY_FLASH || UNITY_METRO
+	/// <summary>
+	/// Access to the clipboard is not supported on this platform.
+	/// </summary>
+
+	public static string clipboard
+	{
+		get { return null; }
+		set { }
+	}
+#else
+	static PropertyInfo mSystemCopyBuffer = null;
+	static PropertyInfo GetSystemCopyBufferProperty ()
+	{
+		if (mSystemCopyBuffer == null)
+		{
+			Type gui = typeof(GUIUtility);
+			mSystemCopyBuffer = gui.GetProperty("systemCopyBuffer", BindingFlags.Static | BindingFlags.NonPublic);
+		}
+		return mSystemCopyBuffer;
+	}
+
+	/// <summary>
+	/// Access to the clipboard via a hacky method of accessing Unity's internals. Won't work in the web player.
+	/// </summary>
+
+	public static string clipboard
+	{
+		get
+		{
+			PropertyInfo copyBuffer = GetSystemCopyBufferProperty();
+			return (copyBuffer != null) ? (string)copyBuffer.GetValue(null, null) : null;
+		}
+		set
+		{
+			PropertyInfo copyBuffer = GetSystemCopyBufferProperty();
+			if (copyBuffer != null) copyBuffer.SetValue(null, value, null);
+		}
+	}
+#endif
 }

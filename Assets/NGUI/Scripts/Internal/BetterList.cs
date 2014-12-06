@@ -1,6 +1,6 @@
-﻿//----------------------------------------------
+//----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright © 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -17,7 +17,7 @@ public class BetterList<T>
 	List<T> mList = new List<T>();
 	
 	/// <summary>
-	/// Direct access to the buffer. Note that you should not use its 'Length' parameter, but instead use BetterList.Length.
+	/// Direct access to the buffer. Note that you should not use its 'Length' parameter, but instead use BetterList.size.
 	/// </summary>
 	
 	public T this[int i]
@@ -63,10 +63,22 @@ public class BetterList<T>
 	public void Add (T item) { mList.Add(item); }
 
 	/// <summary>
+	/// Insert an item at the specified index, pushing the entries back.
+	/// </summary>
+
+	public void Insert (int index, T item) { mList.Insert(index, item); }
+
+	/// <summary>
+	/// Returns 'true' if the specified item is within the list.
+	/// </summary>
+
+	public bool Contains (T item) { return mList.Contains(item); }
+
+	/// <summary>
 	/// Remove the specified item from the list. Note that RemoveAt() is faster and is advisable if you already know the index.
 	/// </summary>
 
-	public void Remove (T item) { mList.Remove(item); }
+	public bool Remove (T item) { return mList.Remove(item); }
 
 	/// <summary>
 	/// Remove an item at the specified index.
@@ -80,10 +92,16 @@ public class BetterList<T>
 
 	public T[] ToArray () { return mList.ToArray(); }
 
+	/// <summary>
+	/// List.Sort equivalent.
+	/// </summary>
+
+	public void Sort (System.Comparison<T> comparer) { mList.Sort(comparer); }
+
 #else
 
 	/// <summary>
-	/// Direct access to the buffer. Note that you should not use its 'Length' parameter, but instead use BetterList.Length.
+	/// Direct access to the buffer. Note that you should not use its 'Length' parameter, but instead use BetterList.size.
 	/// </summary>
 
 	public T[] buffer;
@@ -172,10 +190,38 @@ public class BetterList<T>
 	}
 
 	/// <summary>
+	/// Insert an item at the specified index, pushing the entries back.
+	/// </summary>
+
+	public void Insert (int index, T item)
+	{
+		if (buffer == null || size == buffer.Length) AllocateMore();
+
+		if (index < size)
+		{
+			for (int i = size; i > index; --i) buffer[i] = buffer[i - 1];
+			buffer[index] = item;
+			++size;
+		}
+		else Add(item);
+	}
+
+	/// <summary>
+	/// Returns 'true' if the specified item is within the list.
+	/// </summary>
+
+	public bool Contains (T item)
+	{
+		if (buffer == null) return false;
+		for (int i = 0; i < size; ++i) if (buffer[i].Equals(item)) return true;
+		return false;
+	}
+
+	/// <summary>
 	/// Remove the specified item from the list. Note that RemoveAt() is faster and is advisable if you already know the index.
 	/// </summary>
 
-	public void Remove (T item)
+	public bool Remove (T item)
 	{
 		if (buffer != null)
 		{
@@ -188,10 +234,11 @@ public class BetterList<T>
 					--size;
 					buffer[i] = default(T);
 					for (int b = i; b < size; ++b) buffer[b] = buffer[b + 1];
-					return;
+					return true;
 				}
 			}
 		}
+		return false;
 	}
 
 	/// <summary>
@@ -209,9 +256,49 @@ public class BetterList<T>
 	}
 
 	/// <summary>
+	/// Remove an item from the end.
+	/// </summary>
+
+	public T Pop ()
+	{
+		if (buffer != null && size != 0)
+		{
+			T val = buffer[--size];
+			buffer[size] = default(T);
+			return val;
+		}
+		return default(T);
+	}
+
+	/// <summary>
 	/// Mimic List's ToArray() functionality, except that in this case the list is resized to match the current size.
 	/// </summary>
 
 	public T[] ToArray () { Trim(); return buffer; }
+
+	/// <summary>
+	/// List.Sort equivalent.
+	/// </summary>
+
+	public void Sort (System.Comparison<T> comparer)
+	{
+		bool changed = true;
+
+		while (changed)
+		{
+			changed = false;
+
+			for (int i = 1; i < size; ++i)
+			{
+				if (comparer.Invoke(buffer[i - 1], buffer[i]) > 0)
+				{
+					T temp = buffer[i];
+					buffer[i] = buffer[i - 1];
+					buffer[i - 1] = temp;
+					changed = true;
+				}
+			}
+		}
+	}
 #endif
 }

@@ -1,6 +1,6 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright Â© 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -38,6 +38,12 @@ public class UIDraggableCamera : IgnoreTimeScale
 	public UIDragObject.DragEffect dragEffect = UIDragObject.DragEffect.MomentumAndSpring;
 
 	/// <summary>
+	/// Whether the drag operation will be started smoothly, or if if it will be precise (but will have a noticeable "jump").
+	/// </summary>
+
+	public bool smoothDragStart = true;
+
+	/// <summary>
 	/// How much momentum gets applied when the press is released after dragging.
 	/// </summary>
 
@@ -49,6 +55,8 @@ public class UIDraggableCamera : IgnoreTimeScale
 	Vector2 mMomentum = Vector2.zero;
 	Bounds mBounds;
 	float mScroll = 0f;
+	UIRoot mRoot;
+	bool mDragStarted = false;
 
 	/// <summary>
 	/// Current momentum, exposed just in case it's needed.
@@ -71,6 +79,12 @@ public class UIDraggableCamera : IgnoreTimeScale
 			enabled = false;
 		}
 	}
+
+	/// <summary>
+	/// Cache the root.
+	/// </summary>
+
+	void Start () { mRoot = NGUITools.FindInParents<UIRoot>(gameObject); }
 
 	/// <summary>
 	/// Calculate the offset needed to be constrained within the panel's bounds.
@@ -126,6 +140,8 @@ public class UIDraggableCamera : IgnoreTimeScale
 
 	public void Press (bool isPressed)
 	{
+		if (isPressed) mDragStarted = false;
+
 		if (rootForBounds != null)
 		{
 			mPressed = isPressed;
@@ -156,7 +172,15 @@ public class UIDraggableCamera : IgnoreTimeScale
 
 	public void Drag (Vector2 delta)
 	{
+		// Prevents the initial jump when the drag threshold gets passed
+		if (smoothDragStart && !mDragStarted)
+		{
+			mDragStarted = true;
+			return;
+		}
+
 		UICamera.currentTouch.clickNotification = UICamera.ClickNotification.BasedOnDelta;
+		if (mRoot != null) delta *= mRoot.pixelSizeAdjustment;
 
 		Vector2 offset = Vector2.Scale(delta, -scale);
 		mTrans.localPosition += (Vector3)offset;
@@ -178,7 +202,7 @@ public class UIDraggableCamera : IgnoreTimeScale
 
 	public void Scroll (float delta)
 	{
-		if (enabled && gameObject.active)
+		if (enabled && NGUITools.GetActive(gameObject))
 		{
 			if (Mathf.Sign(mScroll) != Mathf.Sign(delta)) mScroll = 0f;
 			mScroll += delta * scrollWheelFactor;
@@ -216,8 +240,12 @@ public class UIDraggableCamera : IgnoreTimeScale
 					SpringPosition sp = GetComponent<SpringPosition>();
 					if (sp != null) sp.enabled = false;
 				}
+				return;
 			}
 			else mScroll = 0f;
 		}
+
+		// Dampen the momentum
+		NGUIMath.SpringDampen(ref mMomentum, 9f, delta);
 	}
 }

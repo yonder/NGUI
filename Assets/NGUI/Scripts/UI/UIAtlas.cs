@@ -1,6 +1,6 @@
-﻿//----------------------------------------------
+//----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright © 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -14,12 +14,16 @@ using System;
 [AddComponentMenu("NGUI/UI/Atlas")]
 public class UIAtlas : MonoBehaviour
 {
+	// Ideally this class should be called UISpriteData and should be separate from UIAtlas...
+	// But unfortunately I can't rename it or move it out as it will break backwards compatibility.
+
 	[System.Serializable]
 	public class Sprite
 	{
 		public string name = "Unity Bug";
 		public Rect outer = new Rect(0f, 0f, 1f, 1f);
 		public Rect inner = new Rect(0f, 0f, 1f, 1f);
+		public bool rotated = false;
 
 		// Padding is needed for trimmed sprites and is relative to sprite width and height
 		public float paddingLeft	= 0f;
@@ -44,19 +48,22 @@ public class UIAtlas : MonoBehaviour
 	}
 
 	// Material used by this atlas. Name is kept only for backwards compatibility, it used to be public.
-	[SerializeField] Material material;
+	[HideInInspector][SerializeField] Material material;
 
 	// List of all sprites inside the atlas. Name is kept only for backwards compatibility, it used to be public.
-	[SerializeField] List<Sprite> sprites = new List<Sprite>();
+	[HideInInspector][SerializeField] List<Sprite> sprites = new List<Sprite>();
 
 	// Currently active set of coordinates
-	[SerializeField] Coordinates mCoordinates = Coordinates.Pixels;
+	[HideInInspector][SerializeField] Coordinates mCoordinates = Coordinates.Pixels;
 
 	// Size in pixels for the sake of MakePixelPerfect functions.
-	[SerializeField] float mPixelSize = 1f;
+	[HideInInspector][SerializeField] float mPixelSize = 1f;
 
 	// Replacement atlas can be used to completely bypass this atlas, pulling the data from another one instead.
-	[SerializeField] UIAtlas mReplacement;
+	[HideInInspector][SerializeField] UIAtlas mReplacement;
+
+	// Whether the atlas is using a pre-multiplied alpha material. -1 = not checked. 0 = no. 1 = yes.
+	int mPMA = -1;
 
 	/// <summary>
 	/// Material used by the atlas.
@@ -78,15 +85,36 @@ public class UIAtlas : MonoBehaviour
 			{
 				if (material == null)
 				{
+					mPMA = 0;
 					material = value;
 				}
 				else
 				{
 					MarkAsDirty();
+					mPMA = -1;
 					material = value;
 					MarkAsDirty();
 				}
 			}
+		}
+	}
+
+	/// <summary>
+	/// Whether the atlas is using a premultiplied alpha material.
+	/// </summary>
+
+	public bool premultipliedAlpha
+	{
+		get
+		{
+			if (mReplacement != null) return mReplacement.premultipliedAlpha;
+
+			if (mPMA == -1)
+			{
+				Material mat = spriteMaterial;
+				mPMA = (mat != null && mat.shader != null && mat.shader.name.Contains("Premultiplied")) ? 1 : 0;
+			}
+			return (mPMA == 1);
 		}
 	}
 
@@ -240,28 +268,77 @@ public class UIAtlas : MonoBehaviour
 				}
 			}
 		}
-		else
-		{
-			Debug.LogWarning("Expected a valid name, found nothing");
-		}
 		return null;
 	}
+
+	/// <summary>
+	/// Function used for sorting in the GetListOfSprites() function below.
+	/// </summary>
+
+	static int CompareString (string a, string b) { return a.CompareTo(b); }
 
 	/// <summary>
 	/// Convenience function that retrieves a list of all sprite names.
 	/// </summary>
 
-	public List<string> GetListOfSprites ()
+	public BetterList<string> GetListOfSprites ()
 	{
 		if (mReplacement != null) return mReplacement.GetListOfSprites();
-		List<string> list = new List<string>();
+		BetterList<string> list = new BetterList<string>();
 		
 		for (int i = 0, imax = sprites.Count; i < imax; ++i)
 		{
 			Sprite s = sprites[i];
 			if (s != null && !string.IsNullOrEmpty(s.name)) list.Add(s.name);
 		}
-		list.Sort();
+		//list.Sort(CompareString);
+		return list;
+	}
+
+	/// <summary>
+	/// Convenience function that retrieves a list of all sprite names that contain the specified phrase
+	/// </summary>
+
+	public BetterList<string> GetListOfSprites (string match)
+	{
+		if (mReplacement != null) return mReplacement.GetListOfSprites(match);
+		if (string.IsNullOrEmpty(match)) return GetListOfSprites();
+		BetterList<string> list = new BetterList<string>();
+
+		// First try to find an exact match
+		for (int i = 0, imax = sprites.Count; i < imax; ++i)
+		{
+			Sprite s = sprites[i];
+			
+			if (s != null && !string.IsNullOrEmpty(s.name) && string.Equals(match, s.name, StringComparison.OrdinalIgnoreCase))
+			{
+				list.Add(s.name);
+				return list;
+			}
+		}
+
+		// No exact match found? Split up the search into space-separated components.
+		string[] keywords = match.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+		for (int i = 0; i < keywords.Length; ++i) keywords[i] = keywords[i].ToLower();
+
+		// Try to find all sprites where all keywords are present
+		for (int i = 0, imax = sprites.Count; i < imax; ++i)
+		{
+			Sprite s = sprites[i];
+			
+			if (s != null && !string.IsNullOrEmpty(s.name))
+			{
+				string tl = s.name.ToLower();
+				int matches = 0;
+
+				for (int b = 0; b < keywords.Length; ++b)
+				{
+					if (tl.Contains(keywords[b])) ++matches;
+				}
+				if (matches == keywords.Length) list.Add(s.name);
+			}
+		}
+		//list.Sort(CompareString);
 		return list;
 	}
 
@@ -292,6 +369,11 @@ public class UIAtlas : MonoBehaviour
 
 	public void MarkAsDirty ()
 	{
+#if UNITY_EDITOR
+		UnityEditor.EditorUtility.SetDirty(gameObject);
+#endif
+		if (mReplacement != null) mReplacement.MarkAsDirty();
+
 		UISprite[] list = NGUITools.FindActive<UISprite>();
 
 		for (int i = 0, imax = list.Length; i < imax; ++i)

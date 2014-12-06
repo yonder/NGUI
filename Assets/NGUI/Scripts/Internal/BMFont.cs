@@ -1,6 +1,6 @@
 ﻿//----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright © 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -13,24 +13,23 @@ using System.Collections.Generic;
 [System.Serializable]
 public class BMFont
 {
-	[SerializeField] BMGlyph[] mGlyphs = null;	// Prior to version 1.84, glyphs were stored in one large array
-	[SerializeField] int mSize = 0;				// How much to move the cursor when moving to the next line
-	[SerializeField] int mBase = 0;				// Offset from the top of the line to the base of each character
-	[SerializeField] int mWidth = 0;			// Original width of the texture
-	[SerializeField] int mHeight = 0;			// Original height of the texture
-	[SerializeField] string mSpriteName;
+	[HideInInspector][SerializeField] int mSize = 0;			// How much to move the cursor when moving to the next line
+	[HideInInspector][SerializeField] int mBase = 0;			// Offset from the top of the line to the base of each character
+	[HideInInspector][SerializeField] int mWidth = 0;			// Original width of the texture
+	[HideInInspector][SerializeField] int mHeight = 0;			// Original height of the texture
+	[HideInInspector][SerializeField] string mSpriteName;
 
-	// List of serialized glyphs (1.84 and up)
-	[SerializeField] List<BMGlyph> mSaved = new List<BMGlyph>();
+	// List of serialized glyphs
+	[HideInInspector][SerializeField] List<BMGlyph> mSaved = new List<BMGlyph>();
 
-	// Actual glyphs that we'll be working with are stored in a dictionary, making the lookup faster (1.84 and up)
+	// Actual glyphs that we'll be working with are stored in a dictionary, making the lookup faster
 	Dictionary<int, BMGlyph> mDict = new Dictionary<int, BMGlyph>();
 
 	/// <summary>
 	/// Whether the font can be used.
 	/// </summary>
 
-	public bool isValid { get { return (mSaved.Count > 0) || LegacyCheck(); } }
+	public bool isValid { get { return (mSaved.Count > 0); } }
 
 	/// <summary>
 	/// Size of this font (for example 32 means 32 pixels).
@@ -69,46 +68,6 @@ public class BMFont
 	public string spriteName { get { return mSpriteName; } set { mSpriteName = value; } }
 
 	/// <summary>
-	/// Before version 1.84 all glyphs were stored in a single array. This was great, unless the glyphs happened to be
-	/// outside of the 256 range, resulting in 65k characters, even if the font only used a few glyphs outside that range.
-	/// This resulted in slower loading performance on mobile devices with a slow disk access.
-	/// This function will convert pre-184 data to post-184 data. It will eventually be removed, so please don't use it.
-	/// </summary>
-
-	public bool LegacyCheck ()
-	{
-		if (mGlyphs != null && mGlyphs.Length > 0)
-		{
-			for (int i = 0, imax = mGlyphs.Length; i < imax; ++i)
-			{
-				BMGlyph bmg = mGlyphs[i];
-
-				if (bmg != null)
-				{
-					bmg.index = i;
-					mSaved.Add(bmg);
-					mDict.Add(i, bmg);
-				}
-			}
-			mGlyphs = null;
-			return true;
-		}
-		return false;
-	}
-
-	/// <summary>
-	/// Helper function that calculates the ideal size of the array given an index.
-	/// </summary>
-
-	int GetArraySize (int index)
-	{
-		if (index < 256) return 256;
-		if (index < 65536) return 65536;
-		if (index < 262144) return 262144;
-		return 0;
-	}
-
-	/// <summary>
 	/// Helper function that retrieves the specified glyph, creating it if necessary.
 	/// </summary>
 
@@ -119,19 +78,11 @@ public class BMFont
 
 		if (mDict.Count == 0)
 		{
-			// Legacy check for pre-1.84 fonts
-			if (mSaved.Count == 0)
+			// Populate the dictionary for faster access
+			for (int i = 0, imax = mSaved.Count; i < imax; ++i)
 			{
-				LegacyCheck();
-			}
-			else
-			{
-				// Populate the dictionary for faster access
-				for (int i = 0, imax = mSaved.Count; i < imax; ++i)
-				{
-					BMGlyph bmg = mSaved[i];
-					mDict.Add(bmg.index, bmg);
-				}
+				BMGlyph bmg = mSaved[i];
+				mDict.Add(bmg.index, bmg);
 			}
 		}
 
@@ -147,7 +98,7 @@ public class BMFont
 	}
 
 	/// <summary>
-	/// Read access to glyphs.
+	/// Retrieve the specified glyph, if it's present.
 	/// </summary>
 
 	public BMGlyph GetGlyph (int index) { return GetGlyph(index, false); }
@@ -158,7 +109,6 @@ public class BMFont
 
 	public void Clear ()
 	{
-		mGlyphs = null;
 		mDict.Clear();
 		mSaved.Clear();
 	}

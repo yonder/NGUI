@@ -1,8 +1,3 @@
-﻿//----------------------------------------------
-//            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
-//----------------------------------------------
-
 using UnityEngine;
 using System.Collections.Generic;
 
@@ -10,14 +5,14 @@ using System.Collections.Generic;
 /// Example script that can be used to show tooltips.
 /// </summary>
 
-[AddComponentMenu("NGUI/Examples/Tooltip")]
+[AddComponentMenu("NGUI/UI/Tooltip")]
 public class UITooltip : MonoBehaviour
 {
 	static UITooltip mInstance;
 
 	public Camera uiCamera;
 	public UILabel text;
-	public UISlicedSprite background;
+	public UISprite background;
 	public float appearSpeed = 10f;
 	public bool scalingTransitions = true;
 
@@ -65,7 +60,6 @@ public class UITooltip : MonoBehaviour
 
 				Vector3 size = Vector3.one * (1.5f - mCurrent * 0.5f);
 				Vector3 pos = Vector3.Lerp(mPos - offset, mPos, mCurrent);
-				pos = NGUIMath.ApplyHalfPixelOffset(pos);
 
 				mTrans.localPosition = pos;
 				mTrans.localScale = size;
@@ -94,10 +88,9 @@ public class UITooltip : MonoBehaviour
 
 	void SetText (string tooltipText)
 	{
-		if (!string.IsNullOrEmpty(tooltipText))
+		if (text != null && !string.IsNullOrEmpty(tooltipText))
 		{
 			mTarget = 1f;
-			
 			if (text != null) text.text = tooltipText;
 
 			// Orthographic camera positioning is trivial
@@ -107,24 +100,21 @@ public class UITooltip : MonoBehaviour
 			{
 				Transform backgroundTrans = background.transform;
 
-				if (text != null && text.font != null)
-				{
-					Transform textTrans = text.transform;
-					Vector3 offset = textTrans.localPosition;
-					Vector3 textScale = textTrans.localScale;
+				Transform textTrans = text.transform;
+				Vector3 offset = textTrans.localPosition;
+				Vector3 textScale = textTrans.localScale;
 
-					// Calculate the dimensions of the printed text
-					mSize = text.font.CalculatePrintedSize(tooltipText, true);
+				// Calculate the dimensions of the printed text
+				mSize = text.relativeSize;
 
-					// Scale by the transform and adjust by the padding offset
-					mSize.x *= textScale.x;
-					mSize.y *= textScale.y;
-					mSize.x += offset.x * 2f;
-					mSize.y -= offset.y * 2f;
-					mSize.z = 1f;
+				// Scale by the transform and adjust by the padding offset
+				mSize.x *= textScale.x;
+				mSize.y *= textScale.y;
+				mSize.x += background.border.x + background.border.z + ( offset.x - background.border.x) * 2f;
+				mSize.y += background.border.y + background.border.w + (-offset.y - background.border.y) * 2f;
+				mSize.z = 1f;
 
-					backgroundTrans.localScale = mSize;
-				}
+				backgroundTrans.localScale = mSize;
 			}
 
 			if (uiCamera != null)
@@ -148,6 +138,9 @@ public class UITooltip : MonoBehaviour
 				// Update the absolute position and save the local one
 				mTrans.position = uiCamera.ViewportToWorldPoint(mPos);
 				mPos = mTrans.localPosition;
+				mPos.x = Mathf.Round(mPos.x);
+				mPos.y = Mathf.Round(mPos.y);
+				mTrans.localPosition = mPos;
 			}
 			else
 			{
@@ -159,9 +152,6 @@ public class UITooltip : MonoBehaviour
 				mPos.x -= Screen.width * 0.5f;
 				mPos.y -= Screen.height * 0.5f;
 			}
-
-			// Set the final position
-			mTrans.localPosition = NGUIMath.ApplyHalfPixelOffset(mPos);
 		}
 		else mTarget = 0f;
 	}
@@ -176,50 +166,5 @@ public class UITooltip : MonoBehaviour
 		{
 			mInstance.SetText(tooltipText);
 		}
-	}
-
-	/// <summary>
-	/// Show a tooltip with the tooltip text for the specified item.
-	/// </summary>
-
-	static public void ShowItem (InvGameItem item)
-	{
-		if (item != null)
-		{
-			InvBaseItem bi = item.baseItem;
-
-			if (bi != null)
-			{
-				string t = "[" + NGUITools.EncodeColor(item.color) + "]" + item.name + "[-]\n";
-				
-				t += "[AFAFAF]Level " + item.itemLevel + " " + bi.slot;
-				
-				List<InvStat> stats = item.CalculateStats();
-
-				for (int i = 0, imax = stats.Count; i < imax; ++i)
-				{
-					InvStat stat = stats[i];
-					if (stat.amount == 0) continue;
-
-					if (stat.amount < 0)
-					{
-						t += "\n[FF0000]" + stat.amount;
-					}
-					else
-					{
-						t += "\n[00FF00]+" + stat.amount;
-					}
-
-					if (stat.modifier == InvStat.Modifier.Percent) t += "%";
-					t += " " + stat.id;
-					t += "[-]";
-				}
-				
-				if (!string.IsNullOrEmpty(bi.description)) t += "\n[FF9900]" + bi.description;
-				ShowText(t);
-				return;
-			}
-		}
-		if (mInstance != null) mInstance.mTarget = 0f;
 	}
 }

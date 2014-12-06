@@ -1,6 +1,6 @@
 ﻿//----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright © 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -19,11 +19,13 @@ public class UIEventListener : MonoBehaviour
 	public delegate void VectorDelegate (GameObject go, Vector2 delta);
 	public delegate void StringDelegate (GameObject go, string text);
 	public delegate void ObjectDelegate (GameObject go, GameObject draggedObject);
+	public delegate void KeyCodeDelegate (GameObject go, KeyCode key);
 
 	public object parameter;
 
 	public VoidDelegate onSubmit;
 	public VoidDelegate onClick;
+	public VoidDelegate onDoubleClick;
 	public BoolDelegate onHover;
 	public BoolDelegate onPress;
 	public BoolDelegate onSelect;
@@ -31,9 +33,11 @@ public class UIEventListener : MonoBehaviour
 	public VectorDelegate onDrag;
 	public ObjectDelegate onDrop;
 	public StringDelegate onInput;
+	public KeyCodeDelegate onKey;
 
 	void OnSubmit ()				{ if (onSubmit != null) onSubmit(gameObject); }
 	void OnClick ()					{ if (onClick != null) onClick(gameObject); }
+	void OnDoubleClick ()			{ if (onDoubleClick != null) onDoubleClick(gameObject); }
 	void OnHover (bool isOver)		{ if (onHover != null) onHover(gameObject, isOver); }
 	void OnPress (bool isPressed)	{ if (onPress != null) onPress(gameObject, isPressed); }
 	void OnSelect (bool selected)	{ if (onSelect != null) onSelect(gameObject, selected); }
@@ -41,6 +45,7 @@ public class UIEventListener : MonoBehaviour
 	void OnDrag (Vector2 delta)		{ if (onDrag != null) onDrag(gameObject, delta); }
 	void OnDrop (GameObject go)		{ if (onDrop != null) onDrop(gameObject, go); }
 	void OnInput (string text)		{ if (onInput != null) onInput(gameObject, text); }
+	void OnKey (KeyCode key)		{ if (onKey != null) onKey(gameObject, key); }
 
 	/// <summary>
 	/// Get or add an event listener to the specified game object.
@@ -52,7 +57,4 @@ public class UIEventListener : MonoBehaviour
 		if (listener == null) listener = go.AddComponent<UIEventListener>();
 		return listener;
 	}
-
-	[System.Obsolete("Please use UIEventListener.Get instead of UIEventListener.Add")]
-	static public UIEventListener Add (GameObject go) { return Get(go); }
 }

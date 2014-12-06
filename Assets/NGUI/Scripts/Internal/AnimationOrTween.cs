@@ -1,6 +1,6 @@
 ﻿//----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright © 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -16,6 +16,13 @@ namespace AnimationOrTween
 		OnHoverFalse,
 		OnPressTrue,
 		OnPressFalse,
+		OnActivate,
+		OnActivateTrue,
+		OnActivateFalse,
+		OnDoubleClick,
+		OnSelect,
+		OnSelectTrue,
+		OnSelectFalse,
 	}
 
 	public enum Direction

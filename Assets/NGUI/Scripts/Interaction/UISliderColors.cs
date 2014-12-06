@@ -1,6 +1,6 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright © 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -36,7 +36,7 @@ public class UISliderColors : MonoBehaviour
 		{
 			if (startIndex + 1 < colors.Length)
 			{
-				float factor = (val - startIndex) / (colors.Length - 2);
+				float factor = (val - startIndex);
 				c = Color.Lerp(colors[startIndex], colors[startIndex + 1], factor);
 			}
 			else if (startIndex < colors.Length)

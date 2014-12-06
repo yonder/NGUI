@@ -1,6 +1,6 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright © 2011-2013 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -18,16 +18,23 @@ public class NGUIDebug : MonoBehaviour
 	
 	static public void Log (string text)
 	{
-		//Debug.Log(text);
-
-		if (mLines.Count > 20) mLines.RemoveAt(0);
-		mLines.Add(text);
-		
-		if (mInstance == null)
+		if (Application.isPlaying)
 		{
-			GameObject go = new GameObject("_NGUI Debug");
-			mInstance = go.AddComponent<NGUIDebug>();
-			DontDestroyOnLoad(go);
+			//Debug.Log(text);
+
+			if (mLines.Count > 20) mLines.RemoveAt(0);
+			mLines.Add(text);
+
+			if (mInstance == null)
+			{
+				GameObject go = new GameObject("_NGUI Debug");
+				mInstance = go.AddComponent<NGUIDebug>();
+				DontDestroyOnLoad(go);
+			}
+		}
+		else
+		{
+			Debug.Log(text);
 		}
 	}
 

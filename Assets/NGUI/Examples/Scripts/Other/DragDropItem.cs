@@ -1,11 +1,11 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2012 Tasharen Entertainment
+// Copyright Â© 2011-2012 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
 
-[AddComponentMenu("NGUI/Examples/Drag & Drop Item")]
+[AddComponentMenu("NGUI/Examples/Drag and Drop Item")]
 public class DragDropItem : MonoBehaviour
 {
 	/// <summary>
@@ -16,6 +16,7 @@ public class DragDropItem : MonoBehaviour
 
 	Transform mTrans;
 	bool mIsDragging = false;
+	bool mSticky = false;
 	Transform mParent;
 
 	/// <summary>
@@ -42,6 +43,10 @@ public class DragDropItem : MonoBehaviour
 		{
 			// Container found -- parent this object to the container
 			mTrans.parent = container.transform;
+
+			Vector3 pos = mTrans.localPosition;
+			pos.z = 0f;
+			mTrans.localPosition = pos;
 		}
 		else
 		{
@@ -53,7 +58,7 @@ public class DragDropItem : MonoBehaviour
 		UpdateTable();
 
 		// Make all widgets update their parents
-		BroadcastMessage("CheckParent", SendMessageOptions.DontRequireReceiver);
+		NGUITools.MarkParentAsChanged(gameObject);
 	}
 
 	/// <summary>
@@ -68,14 +73,19 @@ public class DragDropItem : MonoBehaviour
 
 	void OnDrag (Vector2 delta)
 	{
-		if (UICamera.currentTouchID == -1)
+		if (enabled && UICamera.currentTouchID > -2)
 		{
 			if (!mIsDragging)
 			{
 				mIsDragging = true;
 				mParent = mTrans.parent;
 				mTrans.parent = DragDropRoot.root;
-				mTrans.BroadcastMessage("CheckParent", SendMessageOptions.DontRequireReceiver);
+				
+				Vector3 pos = mTrans.localPosition;
+				pos.z = 0f;
+				mTrans.localPosition = pos;
+
+				NGUITools.MarkParentAsChanged(gameObject);
 			}
 			else
 			{
@@ -90,9 +100,26 @@ public class DragDropItem : MonoBehaviour
 
 	void OnPress (bool isPressed)
 	{
-		mIsDragging = false;
-		Collider col = collider;
-		if (col != null) col.enabled = !isPressed;
-		if (!isPressed) Drop();
+		if (enabled)
+		{
+			if (isPressed)
+			{
+				if (!UICamera.current.stickyPress)
+				{
+					mSticky = true;
+					UICamera.current.stickyPress = true;
+				}
+			}
+			else if (mSticky)
+			{
+				mSticky = false;
+				UICamera.current.stickyPress = false;
+			}
+
+			mIsDragging = false;
+			Collider col = collider;
+			if (col != null) col.enabled = !isPressed;
+			if (!isPressed) Drop();
+		}
 	}
 }
